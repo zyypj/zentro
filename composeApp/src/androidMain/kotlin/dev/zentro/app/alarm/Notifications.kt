@@ -140,6 +140,8 @@ object Notifications {
 object FiredStore {
     private const val PREFS = "zentro-fired"
 
+    // commit() de propósito: o registro precisa estar no disco antes de o processo poder morrer.
+    @android.annotation.SuppressLint("ApplySharedPref")
     @Synchronized
     fun markFired(context: Context, key: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

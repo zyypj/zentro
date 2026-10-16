@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="zentro_background">#F4F5F9</color>
-    <color name="zentro_violet">#6C5CE7</color>
     <color name="ic_launcher_background">#5B4BDB</color>
 </resources>
