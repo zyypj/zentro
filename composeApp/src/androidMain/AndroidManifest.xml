@@ -17,6 +17,8 @@
     <!-- Atualização automática: instalar a versão nova baixada do GitHub. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- usesCleartextTraffic: o servidor costuma ser acessado por IP:porta (Pterodactyl), sem HTTPS.
+         Desde o Android 9 o HTTP puro vem bloqueado por padrão e o app não conseguia se conectar. -->
     <application
         android:name=".ZentroApp"
         android:allowBackup="true"
@@ -25,6 +27,7 @@
         android:label="Zentro"
         android:supportsRtl="true"
         android:theme="@style/Theme.Zentro"
+        android:usesCleartextTraffic="true"
         tools:targetApi="35">
 
         <activity
