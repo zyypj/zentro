@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,13 +28,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.zentro.shared.Event
 import dev.zentro.shared.Format
+import dev.zentro.shared.Person
 import dev.zentro.shared.Recurrence
 import dev.zentro.shared.Schedule
 import kotlinx.datetime.TimeZone
 
 /** Linha de um compromisso: horário, faixa colorida, título e ícones de crítico/repetição. */
 @Composable
-fun EventRow(event: Event, start: Long, tz: TimeZone, now: Long, onClick: () -> Unit) {
+fun EventRow(event: Event, start: Long, tz: TimeZone, now: Long, person: Person? = null, onClick: () -> Unit) {
     val local = Schedule.toLocal(start, tz)
     val end = event.endAt?.let { start + (it - event.startAt) }
     val past = (end ?: start) < now
@@ -62,7 +64,13 @@ fun EventRow(event: Event, start: Long, tz: TimeZone, now: Long, onClick: () -> 
         }
         Box(Modifier.width(4.dp).height(36.dp).clip(RoundedCornerShape(2.dp)).background(color))
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text(event.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (person != null) {
+                    PersonPill(person)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(event.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             val subtitle = buildList {
                 if (ongoing) add("Agora")
                 if (event.reminders.isEmpty()) add("Sem aviso")
@@ -93,4 +101,17 @@ private fun shortOffset(minutes: Int): String = when {
     minutes % 1440 == 0 -> "${minutes / 1440}d antes"
     minutes % 60 == 0 -> "${minutes / 60}h antes"
     else -> "$minutes min antes"
+}
+
+/** Etiqueta com o nome de quem é o compromisso (quando não é seu). */
+@Composable
+fun PersonPill(person: Person) {
+    val color = ZColors.event(person.color)
+    Text(
+        person.name,
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        maxLines = 1,
+        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }

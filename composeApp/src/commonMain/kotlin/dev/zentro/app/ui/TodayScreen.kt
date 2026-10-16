@@ -82,7 +82,7 @@ fun TodayScreen(
                 style = MaterialTheme.typography.headlineMedium,
             )
             Spacer(Modifier.height(16.dp))
-            QuickAddField("Ex.: Dentista amanhã 14h", onQuickEvent)
+            QuickAddField(if (data.activePeople.isEmpty()) "Ex.: Dentista amanhã 14h" else "Ex.: Dentista amanhã 14h  ·  ${data.activePeople.first().name}: prova sexta 10h", onQuickEvent)
         } }
 
         if (needsReview) {
@@ -98,14 +98,14 @@ fun TodayScreen(
             }
         } else {
             items(todayItems, key = { "t-${it.first.id}-${it.second}" }) { (event, start) ->
-                EventRow(event, start, tz, now) { onOpenEvent(event, today, null) }
+                EventRow(event, start, tz, now, data.people[event.personId]?.takeIf { !it.deleted }) { onOpenEvent(event, today, null) }
             }
         }
 
         if (tomorrowItems.isNotEmpty()) {
             item { SectionTitle("Amanhã · ${tomorrowItems.size}") }
             items(tomorrowItems, key = { "a-${it.first.id}-${it.second}" }) { (event, start) ->
-                EventRow(event, start, tz, now) { onOpenEvent(event, tomorrow, null) }
+                EventRow(event, start, tz, now, data.people[event.personId]?.takeIf { !it.deleted }) { onOpenEvent(event, tomorrow, null) }
             }
         }
 

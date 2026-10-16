@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.DateRange
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.zentro.shared.Event
 import dev.zentro.shared.Format
+import dev.zentro.shared.Person
 import dev.zentro.shared.Schedule
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
@@ -51,7 +55,10 @@ import kotlinx.datetime.plus
 
 @Composable
 fun AgendaScreen(
-    events: List<Event>,
+    allEvents: List<Event>,
+    people: List<Person>,
+    filter: String?,
+    onFilter: (String?) -> Unit,
     tz: TimeZone,
     now: Long,
     selected: LocalDate,
@@ -59,6 +66,14 @@ fun AgendaScreen(
     onOpenEvent: (Event) -> Unit,
 ) {
     val today = Schedule.today(tz, now)
+    val events = remember(allEvents, filter) {
+        when (filter) {
+            null -> allEvents
+            AGENDA_MINE -> allEvents.filter { it.personId == null }
+            else -> allEvents.filter { it.personId == filter }
+        }
+    }
+    val peopleById = remember(people) { people.associateBy { it.id } }
     var month by remember { mutableStateOf(LocalDate(selected.year, selected.month, 1)) }
     val gridStart = remember(month) { month.minus(month.dayOfWeek.ordinal, DateTimeUnit.DAY) }
     val days = remember(gridStart) { (0 until 42).map { gridStart.plus(it, DateTimeUnit.DAY) } }
@@ -80,6 +95,20 @@ fun AgendaScreen(
                 }
                 IconButton(onClick = { month = month.plus(1, DateTimeUnit.MONTH) }) {
                     Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Próximo mês")
+                }
+            }
+            if (people.isNotEmpty()) {
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = filter == null, onClick = { onFilter(null) }, label = { Text("Todos") })
+                    FilterChip(selected = filter == AGENDA_MINE, onClick = { onFilter(AGENDA_MINE) }, label = { Text("Meus") })
+                    people.forEach { p ->
+                        FilterChip(
+                            selected = filter == p.id,
+                            onClick = { onFilter(p.id) },
+                            label = { Text(p.name) },
+                            leadingIcon = { StatusDot(ZColors.event(p.color)) },
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -126,7 +155,7 @@ fun AgendaScreen(
                 item { EmptyState(Icons.Rounded.DateRange, "Nada marcado", "Toque em + para adicionar um compromisso neste dia.") }
             } else {
                 items(dayItems, key = { "${it.first.id}-${it.second}" }) { (event, start) ->
-                    EventRow(event, start, tz, now) { onOpenEvent(event) }
+                    EventRow(event, start, tz, now, peopleById[event.personId]) { onOpenEvent(event) }
                 }
             }
         }
@@ -144,6 +173,9 @@ fun AgendaScreen(
         }
     }
 }
+
+/** Filtro da agenda: só os seus compromissos. */
+const val AGENDA_MINE = "__me__"
 
 @Composable
 private fun DayCell(

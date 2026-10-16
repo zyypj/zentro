@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,8 +52,11 @@ import dev.zentro.app.Platform
 import dev.zentro.app.data.AppData
 import dev.zentro.app.data.Repository
 import dev.zentro.app.data.SyncStatus
+import dev.zentro.app.data.UpdateState
+import dev.zentro.app.data.newId
 import dev.zentro.shared.Format
 import dev.zentro.shared.MercadoPagoStatus
+import dev.zentro.shared.Person
 import dev.zentro.shared.Schedule
 import dev.zentro.shared.SettingsPatch
 import kotlinx.coroutines.launch
@@ -64,6 +69,9 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
     val scope = rememberCoroutineScope()
     val session = data.session ?: return
     var addingTime by remember { mutableStateOf(false) }
+    var addingPerson by remember { mutableStateOf(false) }
+    var removingPerson by remember { mutableStateOf<Person?>(null) }
+    val updateState by platform.updates.state.collectAsState()
 
     Column(
         Modifier.widthIn(max = 760.dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 24.dp, bottom = 48.dp),
@@ -143,6 +151,29 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
             }
         }
 
+        // ---------- pessoas ----------
+        SectionTitle("Pessoas")
+        ZCard {
+            Text(
+                "Agendas que você acompanha junto com a sua. Os compromissos delas aparecem com o nome e também te avisam.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                data.activePeople.forEach { person ->
+                    InputChip(
+                        selected = false,
+                        onClick = { removingPerson = person },
+                        label = { Text(person.name) },
+                        leadingIcon = { StatusDot(ZColors.event(person.color)) },
+                        trailingIcon = { Icon(Icons.Rounded.Close, "Remover ${person.name}", Modifier.size(16.dp)) },
+                    )
+                }
+                AssistChip(onClick = { addingPerson = true }, label = { Text("Adicionar pessoa") }, leadingIcon = { Icon(Icons.Rounded.Add, null, Modifier.size(16.dp)) })
+            }
+        }
+
         // ---------- Telegram ----------
         SectionTitle("Telegram (aviso reserva)")
         TelegramCard(repo, data, onMessage)
@@ -150,6 +181,32 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
         // ---------- Mercado Pago ----------
         SectionTitle("Mercado Pago")
         MercadoPagoCard(repo, data, session.serverUrl, tz, onMessage)
+
+        // ---------- versão ----------
+        SectionTitle("Versão")
+        ZCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Zentro ${platform.updates.current}", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        when (val u = updateState) {
+                            is UpdateState.Available -> "Versão ${u.info.version} disponível"
+                            is UpdateState.Downloading -> "Baixando ${u.info.version}... ${(u.progress * 100).toInt()}%"
+                            is UpdateState.Ready -> "Versão ${u.info.version} pronta para instalar"
+                            is UpdateState.Failed -> u.message
+                            UpdateState.None -> "Atualiza sozinho ao abrir o app"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = {
+                    scope.launch {
+                        if (platform.updates.check() == null) onMessage("Você já está na versão mais recente")
+                    }
+                }) { Text("Procurar") }
+            }
+        }
 
         Spacer(Modifier.height(24.dp))
         OutlinedButton(onClick = { scope.launch { repo.logout() } }, modifier = Modifier.fillMaxWidth()) {
@@ -162,6 +219,26 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp).align(Alignment.CenterHorizontally),
+        )
+    }
+
+    if (addingPerson) {
+        AddPersonDialog(onDismiss = { addingPerson = false }) { name ->
+            repo.savePerson(Person(id = newId(), name = name, color = (data.activePeople.size + 4) % ZColors.events.size))
+        }
+    }
+    removingPerson?.let { person ->
+        AlertDialog(
+            onDismissRequest = { removingPerson = null },
+            title = { Text("Remover ${person.name}?") },
+            text = { Text("Os compromissos já marcados continuam na agenda, só sem o nome dela.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    repo.deletePerson(person.id)
+                    removingPerson = null
+                }) { Text("Remover") }
+            },
+            dismissButton = { TextButton(onClick = { removingPerson = null }) { Text("Cancelar") } },
         )
     }
 

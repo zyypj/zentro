@@ -17,10 +17,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -29,6 +32,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import dev.zentro.app.data.newId
 import dev.zentro.shared.Event
 import dev.zentro.shared.Format
+import dev.zentro.shared.Person
 import dev.zentro.shared.Recurrence
 import dev.zentro.shared.Schedule
 import kotlinx.datetime.LocalDate
@@ -53,7 +58,13 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 
-data class EventEditRequest(val event: Event?, val date: LocalDate, val time: LocalTime? = null, val title: String = "")
+data class EventEditRequest(
+    val event: Event?,
+    val date: LocalDate,
+    val time: LocalTime? = null,
+    val title: String = "",
+    val personId: String? = null,
+)
 
 private val reminderOptions = listOf(0, 5, 15, 30, 60, 120, 1440)
 private val durationOptions = listOf(0 to "Sem duração", 30 to "30 min", 60 to "1 h", 120 to "2 h", 240 to "4 h")
@@ -80,6 +91,8 @@ private fun reminderLabel(minutes: Int) = when (minutes) {
 fun EventEditor(
     request: EventEditRequest,
     tz: TimeZone,
+    people: List<Person>,
+    onAddPerson: (String) -> Person,
     onSave: (Event) -> Unit,
     onDelete: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -99,6 +112,8 @@ fun EventEditor(
     var critical by remember { mutableStateOf(original?.critical ?: false) }
     var recurrence by remember { mutableStateOf(original?.recurrence ?: Recurrence.NONE) }
     var color by remember { mutableStateOf(original?.color ?: 0) }
+    var personId by remember { mutableStateOf(original?.personId ?: request.personId) }
+    var addingPerson by remember { mutableStateOf(false) }
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -127,6 +142,7 @@ fun EventEditor(
                 critical = critical,
                 recurrence = recurrence,
                 color = color,
+                personId = personId,
             ),
         )
         onDismiss()
@@ -146,6 +162,19 @@ fun EventEditor(
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
         )
+
+        ChipGroup("De quem é?") {
+            FilterChip(selected = personId == null, onClick = { personId = null }, label = { Text("Meu") })
+            people.forEach { person ->
+                FilterChip(
+                    selected = personId == person.id,
+                    onClick = { personId = person.id },
+                    label = { Text(person.name) },
+                    leadingIcon = { Box(Modifier.size(10.dp).clip(CircleShape).background(ZColors.event(person.color))) },
+                )
+            }
+            AssistChip(onClick = { addingPerson = true }, label = { Text("Pessoa") }, leadingIcon = { Icon(Icons.Rounded.Add, null, Modifier.size(16.dp)) })
+        }
 
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -251,6 +280,44 @@ fun EventEditor(
 
     if (showDate) DatePickerModal(date, { date = it }, { showDate = false })
     if (showTime) TimePickerModal(time, { time = it }, { showTime = false })
+    if (addingPerson) AddPersonDialog(onDismiss = { addingPerson = false }) { name -> personId = onAddPerson(name).id }
+}
+
+/** Pergunta só o nome — criar uma pessoa leva dois segundos. */
+@Composable
+fun AddPersonDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nova pessoa") },
+        text = {
+            Column {
+                Text(
+                    "Acompanhe a agenda de alguém junto com a sua (ex.: namorada, filho, sócio).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nome") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = name.isNotBlank(), onClick = {
+                onAdd(name.trim())
+                onDismiss()
+            }) { Text("Adicionar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
