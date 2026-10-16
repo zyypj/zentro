@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -88,7 +89,7 @@ fun LoginScreen(repo: Repository) {
         if (info?.registrationOpen == false) register = false
     }
 
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
         Column(
             Modifier.widthIn(max = 420.dp).fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
