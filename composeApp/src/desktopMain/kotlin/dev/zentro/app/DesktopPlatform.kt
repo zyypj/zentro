@@ -8,12 +8,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.zentro.app.data.Repository
+import dev.zentro.app.data.UpdateManager
 import dev.zentro.app.ui.ChecklistRow
 import dev.zentro.shared.ReminderTrigger
 import dev.zentro.shared.Schedule
 import java.awt.SystemTray
 
-class DesktopPlatform(private val repo: Repository, private val notifier: DesktopNotifier) : Platform {
+class DesktopPlatform(
+    private val repo: Repository,
+    private val notifier: DesktopNotifier,
+    override val updates: UpdateManager,
+) : Platform {
     override val name: String = "Desktop · " + System.getProperty("os.name")
 
     @Composable

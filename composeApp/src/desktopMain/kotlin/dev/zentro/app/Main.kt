@@ -52,6 +52,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.zentro.app.data.Repository
+import dev.zentro.app.data.UpdateManager
 import dev.zentro.app.ui.App
 import dev.zentro.app.ui.ZColors
 import dev.zentro.app.ui.ZentroTheme
@@ -110,7 +111,9 @@ fun main(args: Array<String>) {
     val repo = Repository(storage, scope)
     val trayState = TrayState()
     val notifier = DesktopNotifier(repo, storage, trayState)
-    val platform = DesktopPlatform(repo, notifier)
+    val startHidden = "--minimized" in args
+    val updates = UpdateManager(repo, DesktopInstaller(startHidden), scope)
+    val platform = DesktopPlatform(repo, notifier, updates)
     val alarm = Sound.AlarmLoop()
 
     // Na primeira execução do app instalado, já liga a inicialização automática.
@@ -121,6 +124,8 @@ fun main(args: Array<String>) {
 
     notifier.start(scope)
     repo.startLive()
+    // Ao abrir: se houver versão nova, baixa e instala sozinho. Com o app aberto, só avisa.
+    updates.start()
     scope.launch {
         // Reserva para quando o tempo real estiver indisponível.
         while (true) {
@@ -128,8 +133,6 @@ fun main(args: Array<String>) {
             delay(5 * 60_000L)
         }
     }
-
-    val startHidden = "--minimized" in args
 
     application {
         var visible by remember { mutableStateOf(!startHidden) }
