@@ -1,5 +1,6 @@
 package dev.zentro.server
 
+import dev.zentro.shared.ApiRoutes
 import java.io.File
 import java.security.SecureRandom
 import java.util.Base64
@@ -14,6 +15,10 @@ data class Config(
     val jwtSecret: String,
     val allowRegistration: Boolean,
     val telegramToken: String?,
+    /** Repositório do GitHub de onde vêm as atualizações (servidor e apps). */
+    val githubRepo: String = ApiRoutes.DEFAULT_REPO,
+    /** Atualiza o próprio servidor sozinho quando sai uma release nova. */
+    val autoUpdate: Boolean = false,
 ) {
     companion object {
         fun fromEnv(env: Map<String, String> = System.getenv()): Config {
@@ -27,6 +32,13 @@ data class Config(
                 jwtSecret = value("ZENTRO_JWT_SECRET") ?: persistentSecret(dataDir),
                 allowRegistration = value("ZENTRO_ALLOW_REGISTRATION")?.lowercase() !in setOf("false", "0", "no", "nao", "não"),
                 telegramToken = value("TELEGRAM_BOT_TOKEN"),
+                githubRepo = value("GITHUB_REPO") ?: ApiRoutes.DEFAULT_REPO,
+                // Ligado por padrão dentro do Pterodactyl (que define P_SERVER_UUID); desligue com ZENTRO_AUTO_UPDATE=false.
+                autoUpdate = when (value("ZENTRO_AUTO_UPDATE")?.lowercase()) {
+                    "true", "1", "yes", "sim" -> true
+                    "false", "0", "no", "nao", "não" -> false
+                    else -> value("P_SERVER_UUID") != null
+                },
             )
         }
 
