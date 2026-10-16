@@ -14,6 +14,7 @@ bcrypt = "0.10.2"
 shadow = "8.3.6"
 activity-compose = "1.10.1"
 work = "2.10.1"
+material-icons = "1.7.3"
 android-compileSdk = "35"
 android-targetSdk = "35"
 android-minSdk = "26"
@@ -51,6 +52,7 @@ logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 bcrypt = { module = "at.favre.lib:bcrypt", version.ref = "bcrypt" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+compose-material-icons-core = { module = "org.jetbrains.compose.material:material-icons-core", version.ref = "material-icons" }
 androidx-work = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 
 [plugins]
