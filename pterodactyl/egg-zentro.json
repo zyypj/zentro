@@ -4,10 +4,10 @@
         "version": "PTDL_v2",
         "update_url": null
     },
-    "exported_at": "2026-10-16T10:30:00-03:00",
+    "exported_at": "2026-10-16T15:00:00-03:00",
     "name": "Zentro Server",
     "author": "150966678+zyypj@users.noreply.github.com",
-    "description": "Servidor do Zentro: agenda e finanças pessoais com sincronização entre celular e computador, lembretes pelo Telegram e importação do Mercado Pago. Kotlin + Ktor + SQLite.",
+    "description": "Servidor do Zentro: agenda, anotações e finanças pessoais com sincronização entre celular e computador, lembretes pelo Telegram, importação do Mercado Pago e atualização automática pelo GitHub. Kotlin + Ktor + SQLite.",
     "features": null,
     "docker_images": {
         "Java 21": "ghcr.io/pterodactyl/yolks:java_21"
@@ -40,7 +40,7 @@
         },
         {
             "name": "Versão",
-            "description": "Tag da release (ex.: v1.0.0) ou 'latest' para a mais recente. Reinstale o servidor para atualizar.",
+            "description": "Versão instalada na primeira instalação/reinstalação: tag (ex.: v1.1.0) ou 'latest'. Depois disso a atualização automática cuida das novas versões.",
             "env_variable": "VERSION",
             "default_value": "latest",
             "user_viewable": true,
@@ -56,6 +56,16 @@
             "user_viewable": true,
             "user_editable": true,
             "rules": "nullable|url",
+            "field_type": "text"
+        },
+        {
+            "name": "Atualização automática",
+            "description": "Quando sai uma release nova no GitHub, o servidor baixa, troca e reinicia sozinho em segundos (e volta para a versão anterior se a nova falhar).",
+            "env_variable": "ZENTRO_AUTO_UPDATE",
+            "default_value": "true",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|in:true,false",
             "field_type": "text"
         },
         {
