@@ -13,12 +13,12 @@ jobs:
   server-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       - run: ./gradlew :shared:jvmTest :server:test :server:shadowJar :composeApp:assembleRelease
 
@@ -28,7 +28,7 @@ jobs:
           cp server/build/libs/zentro-server.jar out/zentro-server.jar
           cp composeApp/build/outputs/apk/release/*.apk out/Zentro.apk
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: server-android
           path: out/*
@@ -45,19 +45,19 @@ jobs:
             task: packageDmg
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       - name: Gerar instalador
         shell: bash
         run: |
           for t in ${{ matrix.task }}; do ./gradlew ":composeApp:$t"; done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: desktop-${{ matrix.os }}
           path: |
@@ -70,7 +70,7 @@ jobs:
     needs: [server-android, desktop]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
