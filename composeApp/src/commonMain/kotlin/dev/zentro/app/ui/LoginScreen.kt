@@ -107,16 +107,15 @@ fun LoginScreen(repo: Repository) {
             OutlinedTextField(
                 value = server,
                 onValueChange = { server = it.trim() },
-                label = { Text("Endereço do servidor") },
+                label = { Text("Endereço") },
                 placeholder = { Text("ex.: 123.45.67.89:8080") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 supportingText = {
                     when {
-                        checking -> Text("Procurando servidor...")
-                        info != null -> Text("✓ Servidor online · v${info!!.version}", color = ZColors.Income)
-                        server.length >= 4 -> Text("Servidor não encontrado ainda")
-                        else -> Text("O endereço do seu servidor no Pterodactyl")
+                        checking -> Text("Procurando...")
+                        info != null -> Text("✓ Encontrado", color = ZColors.Income)
+                        server.length >= 4 -> Text("Não encontrado")
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -181,13 +180,6 @@ fun LoginScreen(repo: Repository) {
                 } else {
                     Text(if (register) "Criar conta" else "Entrar")
                 }
-            }
-            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.Center) {
-                Text(
-                    "Seus dados ficam no seu próprio servidor.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }

@@ -212,7 +212,7 @@ fun NoteEditor(
                             decorationBox = { inner ->
                                 if (content.text.isEmpty()) {
                                     Text(
-                                        "Escreva aqui. Use # para títulos, - [ ] para tarefas, [[ para ligar a outra nota e #tag para organizar.",
+                                        "Comece a escrever…",
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                     )

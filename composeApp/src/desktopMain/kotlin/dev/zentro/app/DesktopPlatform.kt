@@ -30,7 +30,7 @@ class DesktopPlatform(
                 ok = autoStart,
                 title = "Abrir junto com o computador",
                 subtitle = when {
-                    !AutoStart.supported -> "Disponível no app instalado (rodando em modo desenvolvimento)"
+                    !AutoStart.supported -> "Disponível no app instalado"
                     autoStart -> "O Zentro liga sozinho e fica na bandeja"
                     else -> "Sem isso, os avisos só tocam depois que você abrir o app"
                 },
@@ -48,7 +48,7 @@ class DesktopPlatform(
             ChecklistRow(
                 ok = data.settings.telegramLinked,
                 title = "Telegram como reserva",
-                subtitle = if (data.settings.telegramLinked) "O servidor também te avisa pelo Telegram" else "Conecte abaixo para receber mesmo com o PC desligado",
+                subtitle = if (data.settings.telegramLinked) "Você também recebe os avisos no Telegram" else "Conecte abaixo para receber mesmo com o PC desligado",
             )
         }
     }

@@ -90,29 +90,23 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(if (status.online) ZColors.Income else if (status.error != null) ZColors.Warning else MaterialTheme.colorScheme.outline)
+                val ok = status.error == null && data.outbox.isEmpty()
+                StatusDot(if (ok) ZColors.Income else ZColors.Warning)
                 Text(
-                    buildString {
-                        append(if (status.online) "Conectado em tempo real" else "Sem conexão em tempo real")
-                        data.lastSyncOk?.let { append(" · sincronizado às ${Format.time(Schedule.toLocal(it, tz))}") }
-                        if (data.outbox.isNotEmpty()) append(" · ${data.outbox.size} pendente(s)")
+                    when {
+                        status.syncing -> "Salvando..."
+                        ok -> "Tudo salvo"
+                        else -> "Sem conexão agora. Suas alterações ficam guardadas e são enviadas quando a internet voltar."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                 )
-                if (status.syncing) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             }
-            status.error?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = ZColors.Warning, modifier = Modifier.padding(top = 4.dp))
-            }
-            Text(session.serverUrl, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-            Spacer(Modifier.height(8.dp))
-            FilledTonalButton(onClick = { scope.launch { if (repo.sync()) onMessage("Tudo sincronizado") } }) {
-                Icon(ZIcons.Sync, null, Modifier.size(18.dp))
-                Spacer(Modifier.size(8.dp))
-                Text("Sincronizar agora")
-            }
+            TextButton(onClick = {
+                repo.reuploadAll()
+                onMessage("Enviando seus dados de novo")
+            }, modifier = Modifier.padding(top = 4.dp)) { Text("Enviar meus dados de novo") }
         }
 
         // ---------- confiabilidade dos avisos ----------
@@ -194,7 +188,7 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
                             is UpdateState.Downloading -> "Baixando ${u.info.version}... ${(u.progress * 100).toInt()}%"
                             is UpdateState.Ready -> "Versão ${u.info.version} pronta para instalar"
                             is UpdateState.Failed -> u.message
-                            UpdateState.None -> "Atualiza sozinho ao abrir o app"
+                            UpdateState.None -> "Versão atual"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -215,7 +209,7 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
             Text("Sair da conta")
         }
         Text(
-            "Zentro · ${platform.name}",
+            "Zentro ${platform.updates.current}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp).align(Alignment.CenterHorizontally),
@@ -259,7 +253,7 @@ private fun TelegramCard(repo: Repository, data: AppData, onMessage: (String) ->
 
     ZCard {
         Text(
-            "Mesmo com o celular desligado ou sem bateria, o servidor manda seus lembretes pelo Telegram — chega no celular, no relógio e no PC.",
+            "Receba seus lembretes também no Telegram. Eles chegam no celular, no relógio e no PC, mesmo se o celular estiver desligado.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -279,7 +273,7 @@ private fun TelegramCard(repo: Repository, data: AppData, onMessage: (String) ->
                 }
             }
             disabled -> Text(
-                "O servidor ainda não tem um bot do Telegram. Defina TELEGRAM_BOT_TOKEN no painel do servidor para ativar.",
+                "O Telegram ainda não está disponível.",
                 style = MaterialTheme.typography.bodySmall,
                 color = ZColors.Warning,
             )
@@ -332,7 +326,7 @@ private fun MercadoPagoCard(repo: Repository, data: AppData, serverUrl: String, 
                 "1. Acesse mercadopago.com.br/developers/panel\n" +
                     "2. Crie uma aplicação (qualquer nome)\n" +
                     "3. Em \"Credenciais de produção\", copie o Access Token (APP_USR-...)\n" +
-                    "4. Cole abaixo. O token fica só no seu servidor.",
+                    "4. Cole abaixo.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -366,7 +360,7 @@ private fun MercadoPagoCard(repo: Repository, data: AppData, serverUrl: String, 
             }
             data.settings.mercadoPagoLastSync?.let {
                 Text(
-                    "Última importação: ${Format.shortDate(Schedule.toLocal(it, tz).date)} às ${Format.time(Schedule.toLocal(it, tz))} · atualiza sozinho a cada 15 min",
+                    "Última importação: ${Format.shortDate(Schedule.toLocal(it, tz).date)} às ${Format.time(Schedule.toLocal(it, tz))}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -382,18 +376,6 @@ private fun MercadoPagoCard(repo: Repository, data: AppData, serverUrl: String, 
                     }
                 }) { Text(if (busy) "Importando..." else "Importar agora") }
                 TextButton(onClick = { scope.launch { repo.mercadoPagoDisconnect() } }) { Text("Desconectar") }
-            }
-            status?.webhookPath?.let { path ->
-                val url = serverUrl + path
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Opcional, para importar na hora: cadastre esta URL em Webhooks › Pagamentos no painel do Mercado Pago:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(onClick = { clipboard.setText(AnnotatedString(url)); onMessage("URL copiada") }) {
-                    Text(url, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                }
             }
         }
     }

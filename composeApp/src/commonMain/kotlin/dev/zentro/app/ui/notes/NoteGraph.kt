@@ -101,7 +101,7 @@ fun NoteGraph(notes: List<Note>, onOpen: (Note) -> Unit, modifier: Modifier = Mo
 
     Box(modifier) {
         if (notes.isEmpty()) {
-            Text("Crie notas e ligue umas às outras com [[ ]] para ver o mapa.", color = colors.onSurfaceVariant, modifier = Modifier.align(Alignment.Center).padding(24.dp))
+            Text("Ligue notas umas às outras para ver o mapa.", color = colors.onSurfaceVariant, modifier = Modifier.align(Alignment.Center).padding(24.dp))
         }
         Canvas(
             Modifier.fillMaxSize()

@@ -66,10 +66,10 @@ class ApiClient(serverUrl: String, private val token: String?) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            throw ApiFailure("Sem conexão com o servidor", network = true)
+            throw ApiFailure("Sem conexão", network = true)
         }
         if (!response.status.isSuccess()) {
-            val message = runCatching { response.body<ApiError>().message }.getOrNull() ?: "Erro ${response.status.value} no servidor"
+            val message = runCatching { response.body<ApiError>().message }.getOrNull() ?: "Algo deu errado. Tente de novo."
             throw ApiFailure(message, response.status.value)
         }
         return response

@@ -247,7 +247,7 @@ fun NotesScreen(
                             editor(Modifier.weight(1f).fillMaxHeight(), openNote, null)
                         } else {
                             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                                EmptyState(ZIcons.Notes, "Escolha uma nota", "Ou crie uma nova. [[Links]] ligam as notas e #tags organizam tudo.")
+                                EmptyState(ZIcons.Notes, "Escolha uma nota", "Ou crie uma nova.")
                             }
                         }
                     }

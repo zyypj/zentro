@@ -90,7 +90,7 @@ class UpdateManager(private val repo: Repository, private val installer: Install
     private suspend fun install(info: UpdateInfo) {
         val suffix = installer.assetSuffix ?: return
         val url = info.asset(suffix) ?: run {
-            _state.value = UpdateState.Failed(info, "Esta versão não tem instalador para este sistema")
+            _state.value = UpdateState.Failed(info, "Atualização indisponível neste aparelho")
             return
         }
         _state.value = UpdateState.Downloading(info, 0f)

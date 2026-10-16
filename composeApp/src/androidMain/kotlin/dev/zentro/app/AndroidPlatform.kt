@@ -93,7 +93,7 @@ class AndroidPlatform(private val activity: MainActivity) : Platform {
             ChecklistRow(
                 ok = data.settings.telegramLinked,
                 title = "Telegram como reserva",
-                subtitle = if (data.settings.telegramLinked) "O servidor também te avisa pelo Telegram" else "Conecte abaixo para receber até com o celular desligado",
+                subtitle = if (data.settings.telegramLinked) "Você também recebe os avisos no Telegram" else "Conecte abaixo para receber até com o celular desligado",
             )
             Text(
                 "Xiaomi, Samsung, Motorola e outros: em Configurações › Apps › Zentro, ative “Início automático” e deixe a bateria em “Sem restrições”.",
