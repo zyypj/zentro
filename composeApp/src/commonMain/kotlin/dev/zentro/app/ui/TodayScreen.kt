@@ -51,6 +51,7 @@ fun TodayScreen(
     onOpenEvent: (Event?, LocalDate, LocalTime?) -> Unit,
     onReviewed: () -> Unit,
     onOpenFinance: () -> Unit,
+    onTogglePaid: (Event, Long, Boolean) -> Unit,
 ) {
     val today = Schedule.today(tz, now)
     val tomorrow = today.plus(1, DateTimeUnit.DAY)
@@ -98,14 +99,14 @@ fun TodayScreen(
             }
         } else {
             items(todayItems, key = { "t-${it.first.id}-${it.second}" }) { (event, start) ->
-                EventRow(event, start, tz, now, data.people[event.personId]?.takeIf { !it.deleted }) { onOpenEvent(event, today, null) }
+                EventRow(event, start, tz, now, data.people[event.personId]?.takeIf { !it.deleted }, { onTogglePaid(event, start, it) }) { onOpenEvent(event, today, null) }
             }
         }
 
         if (tomorrowItems.isNotEmpty()) {
             item { SectionTitle("Amanhã · ${tomorrowItems.size}") }
             items(tomorrowItems, key = { "a-${it.first.id}-${it.second}" }) { (event, start) ->
-                EventRow(event, start, tz, now, data.people[event.personId]?.takeIf { !it.deleted }) { onOpenEvent(event, tomorrow, null) }
+                EventRow(event, start, tz, now, data.people[event.personId]?.takeIf { !it.deleted }, { onTogglePaid(event, start, it) }) { onOpenEvent(event, tomorrow, null) }
             }
         }
 

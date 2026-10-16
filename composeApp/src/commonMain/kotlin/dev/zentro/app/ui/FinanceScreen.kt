@@ -36,6 +36,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.zentro.shared.Bills
+import dev.zentro.shared.Event
 import dev.zentro.shared.Format
 import dev.zentro.shared.Schedule
 import dev.zentro.shared.Transaction
@@ -44,16 +46,21 @@ import dev.zentro.shared.TxType
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.daysUntil
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 
 @Composable
 fun FinanceScreen(
     transactions: List<Transaction>,
+    events: List<Event>,
     tz: TimeZone,
     now: Long,
     onQuickAdd: (String) -> Boolean,
     onOpen: (Transaction) -> Unit,
+    onOpenBill: (Event) -> Unit,
+    onTogglePaid: (Event, Long, Boolean) -> Unit,
+    onNewBill: () -> Unit,
 ) {
     val today = Schedule.today(tz, now)
     var month by remember { mutableStateOf(LocalDate(today.year, today.month, 1)) }
@@ -71,6 +78,7 @@ fun FinanceScreen(
             .entries.sortedByDescending { it.value }.take(5)
     }
     val grouped = remember(inMonth) { inMonth.groupBy { Schedule.toLocal(it.date, tz).date } }
+    val bills = remember(events, month, now) { Bills.inMonth(events, month, tz, now) }
 
     val summary = @Composable { Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -98,6 +106,7 @@ fun FinanceScreen(
         }
         Spacer(Modifier.height(12.dp))
         QuickAddField("Ex.: 45,90 almoço  ·  +1200 salário", onQuickAdd)
+        BillsSection(bills, tz, now, onOpenBill, onTogglePaid, onNewBill)
         if (byCategory.isNotEmpty()) {
             SectionTitle("Onde foi o dinheiro")
             ZCard {
@@ -185,5 +194,75 @@ fun TransactionRow(tx: Transaction, onClick: () -> Unit) {
             style = MaterialTheme.typography.titleSmall,
             color = color,
         )
+    }
+}
+
+/** Contas do mês: o que já foi pago, o que vence e o que está atrasado. */
+@Composable
+private fun BillsSection(
+    bills: List<Bills.Item>,
+    tz: TimeZone,
+    now: Long,
+    onOpen: (Event) -> Unit,
+    onTogglePaid: (Event, Long, Boolean) -> Unit,
+    onNew: () -> Unit,
+) {
+    val toPay = bills.filter { !it.paid }.sumOf { it.event.billAmountCents ?: 0 }
+    val paid = bills.filter { it.paid }.sumOf { it.event.billAmountCents ?: 0 }
+    SectionTitle("Contas do mês", action = {
+        androidx.compose.material3.TextButton(onClick = onNew) { Text("+ Conta") }
+    })
+    if (bills.isEmpty()) {
+        ZCard(onClick = onNew) {
+            Text("Nenhuma conta neste mês", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Cadastre as contas fixas e o Zentro te lembra antes de vencer. Ex.: Hospedagem todo dia 5 49,90",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    ZCard {
+        Row {
+            Column(Modifier.weight(1f)) {
+                Text("A pagar", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(Format.money(toPay), style = MaterialTheme.typography.titleMedium, color = if (toPay > 0) ZColors.Warning else MaterialTheme.colorScheme.onSurface)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("Pago", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(Format.money(paid), style = MaterialTheme.typography.titleMedium, color = ZColors.Income)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        val today = Schedule.today(tz, now)
+        bills.forEach { item ->
+            val due = Schedule.toLocal(item.due, tz).date
+            val days = today.daysUntil(due)
+            val label = when {
+                item.paid -> "Pago"
+                item.overdue -> "Atrasada há ${-days} dia(s)"
+                days == 0 -> "Vence hoje"
+                days == 1 -> "Vence amanhã"
+                else -> "Vence dia ${due.dayOfMonth}"
+            }
+            val color = when {
+                item.paid -> ZColors.Income
+                item.overdue -> ZColors.Expense
+                days <= 1 -> ZColors.Warning
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+            Row(
+                Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).clickable { onOpen(item.event) }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.Checkbox(checked = item.paid, onCheckedChange = { onTogglePaid(item.event, item.due, it) })
+                Column(Modifier.weight(1f)) {
+                    Text(item.event.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(label, style = MaterialTheme.typography.bodySmall, color = color)
+                }
+                Text(Format.money(item.event.billAmountCents ?: 0), style = MaterialTheme.typography.titleSmall)
+            }
+        }
     }
 }

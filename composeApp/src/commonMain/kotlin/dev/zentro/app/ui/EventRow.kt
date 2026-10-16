@@ -35,10 +35,20 @@ import kotlinx.datetime.TimeZone
 
 /** Linha de um compromisso: horário, faixa colorida, título e ícones de crítico/repetição. */
 @Composable
-fun EventRow(event: Event, start: Long, tz: TimeZone, now: Long, person: Person? = null, onClick: () -> Unit) {
+fun EventRow(
+    event: Event,
+    start: Long,
+    tz: TimeZone,
+    now: Long,
+    person: Person? = null,
+    onTogglePaid: ((Boolean) -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    val bill = event.billAmountCents
+    val paid = start in event.paid
     val local = Schedule.toLocal(start, tz)
     val end = event.endAt?.let { start + (it - event.startAt) }
-    val past = (end ?: start) < now
+    val past = (end ?: start) < now && (bill == null || paid)
     val ongoing = start <= now && end != null && end > now
     val color = ZColors.event(event.color)
 
@@ -71,7 +81,7 @@ fun EventRow(event: Event, start: Long, tz: TimeZone, now: Long, person: Person?
                 }
                 Text(event.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            val subtitle = buildList {
+            val subtitle = if (bill != null) "${Format.money(bill)} · ${event.billCategory}" + if (!paid && start < Schedule.startOfDay(Schedule.today(tz, now), tz)) " · atrasada" else "" else buildList {
                 if (ongoing) add("Agora")
                 if (event.reminders.isEmpty()) add("Sem aviso")
                 else add("Avisa " + event.reminders.sortedDescending().joinToString(", ") { shortOffset(it) })
@@ -84,6 +94,25 @@ fun EventRow(event: Event, start: Long, tz: TimeZone, now: Long, person: Person?
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (bill != null && onTogglePaid != null) {
+            if (paid) {
+                Text(
+                    "✓ Pago",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = ZColors.Income,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onTogglePaid(false) }.padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            } else {
+                Text(
+                    "Pagar",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.primary)
+                        .clickable { onTogglePaid(true) }.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+            Spacer(Modifier.width(6.dp))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (event.recurrence != Recurrence.NONE) {

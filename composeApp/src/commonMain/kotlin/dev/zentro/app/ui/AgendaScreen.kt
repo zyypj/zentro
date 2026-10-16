@@ -64,6 +64,7 @@ fun AgendaScreen(
     selected: LocalDate,
     onSelect: (LocalDate) -> Unit,
     onOpenEvent: (Event) -> Unit,
+    onTogglePaid: (Event, Long, Boolean) -> Unit,
 ) {
     val today = Schedule.today(tz, now)
     val events = remember(allEvents, filter) {
@@ -155,7 +156,7 @@ fun AgendaScreen(
                 item { EmptyState(Icons.Rounded.DateRange, "Nada marcado", "Toque em + para adicionar um compromisso neste dia.") }
             } else {
                 items(dayItems, key = { "${it.first.id}-${it.second}" }) { (event, start) ->
-                    EventRow(event, start, tz, now, peopleById[event.personId]) { onOpenEvent(event) }
+                    EventRow(event, start, tz, now, peopleById[event.personId], { onTogglePaid(event, start, it) }) { onOpenEvent(event) }
                 }
             }
         }

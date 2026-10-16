@@ -57,12 +57,14 @@ import dev.zentro.shared.Event
 import dev.zentro.shared.Format
 import dev.zentro.shared.Person
 import dev.zentro.shared.QuickInput
+import dev.zentro.shared.Recurrence
 import dev.zentro.shared.Schedule
 import dev.zentro.shared.Transaction
 import dev.zentro.shared.TxType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 
 enum class Tab(val label: String, val icon: ImageVector) {
     TODAY("Hoje", Icons.Rounded.Home),
@@ -118,16 +120,42 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
         val person = data.activePeople.firstOrNull { input.startsWith(it.name + ":", ignoreCase = true) }
         val text = if (person != null) input.substringAfter(':').trim() else input
         val draft = QuickInput.parseEvent(text, Schedule.today(tz)) ?: return false
+        val billCents = draft.amountCents
+        if (billCents != null) {
+            // Tem valor: é uma conta a pagar. Sem horário, vale o dia todo e avisa um dia antes e no dia.
+            val start = Schedule.toMillis(LocalDateTime(draft.date, draft.time ?: LocalTime(8, 0)), tz)
+            repo.saveEvent(
+                Event(
+                    id = newId(), title = draft.title, startAt = start, allDay = draft.time == null,
+                    reminders = listOf(1440, 0), recurrence = draft.recurrence, color = 3,
+                    billAmountCents = billCents, personId = person?.id,
+                ),
+            )
+            val repeat = if (draft.recurrence == Recurrence.MONTHLY) " todo dia ${draft.date.dayOfMonth}" else " para ${Format.shortDate(draft.date)}"
+            message("Conta \"${draft.title}\" de ${Format.money(billCents)}$repeat")
+            return true
+        }
         val time = draft.time ?: run {
             // Sem horário: abre o formulário já preenchido para escolher a hora.
             editingEvent = EventEditRequest(null, draft.date, title = draft.title, personId = person?.id)
             return true
         }
         val start = Schedule.toMillis(LocalDateTime(draft.date, time), tz)
-        repo.saveEvent(Event(id = newId(), title = draft.title, startAt = start, endAt = start + 3_600_000, reminders = listOf(15, 0), personId = person?.id))
+        repo.saveEvent(
+            Event(
+                id = newId(), title = draft.title, startAt = start, endAt = start + 3_600_000,
+                reminders = listOf(15, 0), personId = person?.id, recurrence = draft.recurrence,
+            ),
+        )
         val day = if (draft.date == Schedule.today(tz)) "hoje" else Format.longDate(draft.date)
         message((person?.let { "${it.name}: " } ?: "") + "\"${draft.title}\" criado para $day às ${Format.time(LocalDateTime(draft.date, time))}")
         return true
+    }
+
+    fun togglePaid(event: Event, occurrence: Long, paid: Boolean) {
+        repo.setBillPaid(event, occurrence, paid)
+        val amount = event.billAmountCents?.let { Format.money(it) }.orEmpty()
+        message(if (paid) "\"${event.title}\" paga · $amount nas saídas" else "Pagamento de \"${event.title}\" desfeito")
     }
 
     fun quickTransaction(text: String): Boolean {
@@ -190,6 +218,7 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                             message("Agenda de hoje confirmada ✓")
                         },
                         onOpenFinance = { tab = Tab.FINANCE },
+                        onTogglePaid = ::togglePaid,
                     )
                     Tab.AGENDA -> AgendaScreen(
                         allEvents = data.activeEvents,
@@ -201,6 +230,7 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                         selected = selectedDay,
                         onSelect = { selectedDay = it },
                         onOpenEvent = { editingEvent = EventEditRequest(it, selectedDay) },
+                        onTogglePaid = ::togglePaid,
                     )
                     Tab.NOTES -> NotesScreen(
                         notes = data.activeNotes,
@@ -212,10 +242,14 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                     )
                     Tab.FINANCE -> FinanceScreen(
                         transactions = data.activeTransactions,
+                        events = data.activeEvents,
                         tz = tz,
                         now = now,
                         onQuickAdd = ::quickTransaction,
                         onOpen = { editingTx = TxEditRequest(it) },
+                        onOpenBill = { editingEvent = EventEditRequest(it, Schedule.today(tz)) },
+                        onTogglePaid = ::togglePaid,
+                        onNewBill = { editingEvent = EventEditRequest(null, Schedule.today(tz), billAmountCents = 0, recurrence = Recurrence.MONTHLY) },
                     )
                     Tab.SETTINGS -> SettingsScreen(repo, platform, data, status, tz, ::message)
                 }

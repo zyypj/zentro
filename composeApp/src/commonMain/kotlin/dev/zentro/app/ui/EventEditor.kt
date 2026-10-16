@@ -46,6 +46,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import dev.zentro.app.data.newId
 import dev.zentro.shared.Event
@@ -64,6 +66,8 @@ data class EventEditRequest(
     val time: LocalTime? = null,
     val title: String = "",
     val personId: String? = null,
+    val billAmountCents: Long? = null,
+    val recurrence: Recurrence? = null,
 )
 
 private val reminderOptions = listOf(0, 5, 15, 30, 60, 120, 1440)
@@ -110,9 +114,14 @@ fun EventEditor(
     }
     var reminders by remember { mutableStateOf(original?.reminders?.toSet() ?: setOf(15, 0)) }
     var critical by remember { mutableStateOf(original?.critical ?: false) }
-    var recurrence by remember { mutableStateOf(original?.recurrence ?: Recurrence.NONE) }
+    var recurrence by remember { mutableStateOf(original?.recurrence ?: request.recurrence ?: Recurrence.NONE) }
     var color by remember { mutableStateOf(original?.color ?: 0) }
     var personId by remember { mutableStateOf(original?.personId ?: request.personId) }
+    var isBill by remember { mutableStateOf(original?.billAmountCents != null || request.billAmountCents != null) }
+    var billAmount by remember {
+        mutableStateOf((original?.billAmountCents ?: request.billAmountCents)?.let { Format.money(it).removePrefix("R$ ") } ?: "")
+    }
+    var billCategory by remember { mutableStateOf(original?.billCategory ?: "Contas") }
     var addingPerson by remember { mutableStateOf(false) }
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
@@ -125,6 +134,11 @@ fun EventEditor(
         val cleanTitle = title.trim()
         if (cleanTitle.isEmpty()) {
             error = "Dê um nome ao compromisso"
+            return
+        }
+        val billCents = if (isBill) Format.parseMoney(billAmount)?.takeIf { it > 0 } else null
+        if (isBill && billCents == null) {
+            error = "Informe o valor da conta"
             return
         }
         val startTime = if (allDay) ALL_DAY_TIME else time
@@ -143,6 +157,9 @@ fun EventEditor(
                 recurrence = recurrence,
                 color = color,
                 personId = personId,
+                billAmountCents = billCents,
+                billCategory = billCategory,
+                paid = original?.paid ?: emptyList(),
             ),
         )
         onDismiss()
@@ -157,8 +174,8 @@ fun EventEditor(
             onValueChange = { title = it; error = null },
             label = { Text("O que é?") },
             singleLine = true,
-            isError = error != null,
-            supportingText = error?.let { { Text(it) } },
+            isError = error != null && title.isBlank(),
+            supportingText = error?.takeIf { title.isBlank() }?.let { { Text(it) } },
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
         )
@@ -174,6 +191,51 @@ fun EventEditor(
                 )
             }
             AssistChip(onClick = { addingPerson = true }, label = { Text("Pessoa") }, leadingIcon = { Icon(Icons.Rounded.Add, null, Modifier.size(16.dp)) })
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(top = 12.dp).clip(MaterialTheme.shapes.medium)
+                .background(if (isBill) ZColors.Warning.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceContainerHigh)
+                .clickable {
+                    isBill = !isBill
+                    if (isBill && original == null) {
+                        // Padrão de conta: o dia todo, todo mês, avisa um dia antes e no dia.
+                        allDay = true
+                        recurrence = Recurrence.MONTHLY
+                        reminders = setOf(1440, 0)
+                        color = 3
+                    }
+                }.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("💸", fontSize = 20.sp)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text("Conta a pagar", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Hospedagem, aluguel, cartão... Ao pagar, já entra nas suas saídas.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = isBill, onCheckedChange = null)
+        }
+        if (isBill) {
+            OutlinedTextField(
+                value = billAmount,
+                onValueChange = { v -> billAmount = v.filter { it.isDigit() || it == ',' || it == '.' }; error = null },
+                prefix = { Text("R$ ") },
+                label = { Text("Valor") },
+                isError = error != null && title.isNotBlank(),
+                supportingText = error?.takeIf { title.isNotBlank() }?.let { { Text(it) } },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+            ChipGroup("Categoria") {
+                listOf("Contas", "Moradia", "Assinaturas", "Cartão", "Impostos", "Educação", "Saúde", "Outros").forEach { c ->
+                    FilterChip(selected = billCategory == c, onClick = { billCategory = c }, label = { Text(c) })
+                }
+            }
         }
 
         Spacer(Modifier.height(8.dp))
