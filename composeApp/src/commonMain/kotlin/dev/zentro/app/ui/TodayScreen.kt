@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.zentro.app.data.AppData
+import dev.zentro.shared.Bills
 import dev.zentro.shared.Event
 import dev.zentro.shared.Format
 import dev.zentro.shared.Schedule
@@ -40,6 +41,7 @@ import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 
 @Composable
@@ -58,6 +60,10 @@ fun TodayScreen(
     val events = data.activeEvents
     val todayItems = remember(events, today) { Schedule.agendaFor(events, today, tz) }
     val tomorrowItems = remember(events, tomorrow) { Schedule.agendaFor(events, tomorrow, tz) }
+    // Contas vencidas e não pagas (deste mês e do anterior) ficam no topo até serem pagas.
+    val overdue = remember(events, today) {
+        (Bills.inMonth(events, today.minus(1, DateTimeUnit.MONTH), tz, now) + Bills.inMonth(events, today, tz, now)).filter { it.overdue }
+    }
     val needsReview = Schedule.needsReview(data.settings.copy(timezone = tz.id), now)
     val hour = Schedule.toLocal(now, tz).hour
     val greeting = when (hour) {
@@ -88,6 +94,15 @@ fun TodayScreen(
 
         if (needsReview) {
             item { ReviewBanner(todayItems.size, onReviewed) }
+        }
+
+        if (overdue.isNotEmpty()) {
+            item { SectionTitle("Contas atrasadas · ${overdue.size}") }
+            items(overdue, key = { "o-${it.event.id}-${it.due}" }) { bill ->
+                EventRow(bill.event, bill.due, tz, now, data.people[bill.event.personId]?.takeIf { !it.deleted }, { onTogglePaid(bill.event, bill.due, it) }) {
+                    onOpenEvent(bill.event, today, null)
+                }
+            }
         }
 
         item {
