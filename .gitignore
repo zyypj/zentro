@@ -21,7 +21,8 @@ captures/
 *.keystore
 
 # Server runtime
-data/
+/data/
+/server/data/
 *.db
 *.db-journal
 .env
