@@ -137,6 +137,9 @@ class Store(val file: File) {
             it[recurrence] = stored.recurrence.name
             it[color] = stored.color
             it[personId] = stored.personId
+            it[billAmountCents] = stored.billAmountCents
+            it[billCategory] = stored.billCategory
+            it[paid] = stored.paid.joinToString(",")
             it[updatedAt] = now
             it[deleted] = stored.deleted
         }
@@ -401,6 +404,9 @@ class Store(val file: File) {
         recurrence = runCatching { Recurrence.valueOf(this[Events.recurrence]) }.getOrDefault(Recurrence.NONE),
         color = this[Events.color],
         personId = this[Events.personId],
+        billAmountCents = this[Events.billAmountCents],
+        billCategory = this[Events.billCategory],
+        paid = this[Events.paid].split(",").mapNotNull { it.trim().toLongOrNull() },
         updatedAt = this[Events.updatedAt],
         deleted = this[Events.deleted],
     )

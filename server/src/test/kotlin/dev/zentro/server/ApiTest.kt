@@ -173,4 +173,20 @@ class ApiTest {
         val after = client.get("${ApiRoutes.SYNC}?since=${sync.serverTime}") { bearerAuth(auth.token) }.body<SyncResponse>()
         assertTrue(after.notes.single().deleted)
     }
+
+    @Test
+    fun billsKeepAmountAndPaidOccurrences() = testApplication {
+        val client = setup()
+        val auth = client.register()
+        val bill = Event(id = "b1", title = "Hospedagem", startAt = 1_800_000_000_000, billAmountCents = 4990, paid = listOf(1_800_000_000_000))
+        client.put("${ApiRoutes.EVENTS}/b1") {
+            bearerAuth(auth.token)
+            contentType(ContentType.Application.Json)
+            setBody(bill)
+        }
+        val synced = client.get("${ApiRoutes.SYNC}?since=0") { bearerAuth(auth.token) }.body<SyncResponse>().events.single()
+        assertEquals(4990L, synced.billAmountCents)
+        assertEquals(listOf(1_800_000_000_000), synced.paid)
+        assertEquals("Contas", synced.billCategory)
+    }
 }

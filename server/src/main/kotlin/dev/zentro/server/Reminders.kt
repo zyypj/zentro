@@ -56,7 +56,10 @@ class Reminders(private val store: Store, private val telegram: TelegramBot) {
                     val text = buildString {
                         if (person != null) append("👤 <b>").append(TelegramBot.escape(person)).append("</b> · ")
                         append(if (trigger.critical) "🚨 <b>COMPROMISSO CRÍTICO</b>\n" else "⏰ ")
-                        append("<b>").append(TelegramBot.escape(trigger.title)).append("</b>\n")
+                        if (trigger.amountCents != null) append("💸 ")
+                        append("<b>").append(TelegramBot.escape(trigger.title)).append("</b>")
+                        trigger.amountCents?.let { append(" · ").append(Format.money(it)) }
+                        append("\n")
                         append(when (trigger.minutesBefore) {
                             0 -> "Agora"
                             else -> "Começa às ${Format.time(start)} (${Schedule.describeOffset(trigger.minutesBefore)})"

@@ -25,6 +25,10 @@ object Events : Table("events") {
     val recurrence = varchar("recurrence", 16)
     val color = integer("color")
     val personId = varchar("person_id", 64).nullable()
+    // Colunas novas precisam de valor padrão para o SQLite aceitar o ALTER TABLE em bancos existentes.
+    val billAmountCents = long("bill_amount_cents").nullable()
+    val billCategory = varchar("bill_category", 60).default("Contas")
+    val paid = text("paid").default("")
     val updatedAt = long("updated_at").index()
     val deleted = bool("deleted")
     override val primaryKey = PrimaryKey(userId, id)

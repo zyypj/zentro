@@ -74,9 +74,12 @@ private fun Event.validated(pathId: String): Event {
     if (cleanTitle.isEmpty()) bad("Dê um nome ao compromisso")
     if (cleanTitle.length > 300) bad("Nome muito longo")
     if ((endAt ?: startAt) < startAt) bad("O fim não pode ser antes do início")
+    if (billAmountCents != null && billAmountCents !in 1..100_000_000_000L) bad("Valor da conta inválido")
     return copy(
         title = cleanTitle,
         notes = notes.take(5000),
+        billCategory = billCategory.trim().take(60).ifEmpty { "Contas" },
+        paid = paid.distinct().takeLast(500),
         reminders = reminders.filter { it in 0..43_200 }.distinct().sortedDescending().take(10),
     )
 }
