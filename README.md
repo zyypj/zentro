@@ -4,7 +4,7 @@
 
 # Zentro
 
-**Agenda e finanças pessoais que não deixam você esquecer de nada.**
+**Agenda, anotações e finanças pessoais que não deixam você esquecer de nada.**
 Android + Desktop (Windows, Linux, macOS) sincronizados em tempo real, com servidor próprio pronto para o Pterodactyl.
 
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.1-7F52FF?logo=kotlin&logoColor=white)
@@ -25,6 +25,9 @@ Android + Desktop (Windows, Linux, macOS) sincronizados em tempo real, com servi
 - **Agenda simples e rápida.** Escreva `Dentista amanhã 14h` e pronto: o compromisso é criado com avisos. Também entende `reunião sexta 9:30`, `pagar luz 10/11`, `depois de amanhã`…
 - **Avisos que não falham.** Várias camadas independentes (veja abaixo). Compromissos **críticos** tocam como despertador, em tela cheia, até você confirmar.
 - **Cobra a atualização da agenda.** Nos horários que você escolher (padrão 09:00 e 20:00), se você ainda não mexeu na agenda naquele dia, o Zentro te lembra.
+- **Agenda de quem você acompanha.** Marque os compromissos da namorada, do filho ou do sócio junto com os seus: aparecem com o nome da pessoa, têm filtro próprio e também te avisam. Escreva `Ana: prova sexta 10h` e pronto.
+- **Anotações estilo Notion/Obsidian.** Pastas (Trabalho, Faculdade, Projetos...), Markdown, `[[links]]` entre notas com sugestão enquanto digita, "mencionada em", `#tags`, checklists, modelos prontos, nota do dia, todas as tarefas abertas num lugar e mapa de conexões.
+- **Atualiza sozinho.** Servidor, PC e celular buscam as versões novas no GitHub. Ao abrir, o app já baixa e instala. Com ele aberto, aparece um aviso.
 - **Finanças sem esforço.** `45,90 almoço` registra uma saída e `+1200 freela` uma entrada, com a categoria sugerida automaticamente. Saldo do mês, entradas, saídas e para onde foi o dinheiro.
 - **Mercado Pago.** Importa automaticamente os pagamentos recebidos e feitos na sua conta.
 - **Celular e computador conectados.** Mudou num, aparece no outro em segundos (WebSocket). Funciona offline e sincroniza quando a internet volta.
@@ -43,6 +46,34 @@ Android + Desktop (Windows, Linux, macOS) sincronizados em tempo real, com servi
 | **Telegram (reserva no servidor)** | Mesmo com o celular sem bateria ou o PC desligado, o servidor manda o lembrete pelo Telegram, que chega no celular, no relógio e no PC. |
 | **Checklist no app** | Em Ajustes › *Avisos garantidos*, o app verifica permissões (notificação, alarme exato, bateria, tela cheia) e tem um botão para corrigir cada uma, além de *Testar aviso*. |
 
+## Anotações
+
+| Escreva | Vira |
+|---|---|
+| `# Título`, `## Seção` | Títulos |
+| `- [ ] tarefa` | Checklist clicável (aparece também em *Notas › Tarefas*) |
+| `[[Outra nota]]` ou `[[Outra nota\|apelido]]` | Link. Se a nota não existir, é criada ao clicar |
+| `#faculdade` | Tag, com filtro na barra lateral |
+| `**negrito**`, `*itálico*`, `` `código` ``, `> citação`, `---` | Formatação |
+
+- **Pastas e subpastas:** `Faculdade/Cálculo`.
+- **Modelos:** Reunião, Aula, Projeto, Ideia e Nota do dia (diário).
+- **Mencionada em:** cada nota mostra quais outras apontam para ela.
+- **Mapa:** visualize como as notas se conectam e toque para abrir.
+- **Busca:** procura em título, conteúdo e tags, com trecho destacado.
+
+## Atualização automática
+
+| Onde | Como funciona |
+|---|---|
+| **Servidor** | O próprio `.jar` supervisiona o servidor. A cada 6 horas confere o GitHub; achando versão nova, baixa, confere se o arquivo está íntegro, troca e reinicia em segundos. Se a versão nova falhar ao subir, volta para a anterior. Se o servidor cair por qualquer motivo, ele é reiniciado sozinho. |
+| **PC (Windows)** | Ao abrir, se houver versão nova, baixa o instalador, fecha, instala em silêncio e reabre. Com o app aberto, mostra um aviso com o botão **Atualizar**. |
+| **Android** | Ao abrir, baixa o APK novo e abre a tela de instalação. O Android sempre pede um toque para confirmar e, na primeira vez, para permitir "instalar desta fonte". |
+
+Para o APK atualizar por cima da versão anterior, as releases precisam ser assinadas sempre com a mesma chave. Configure uma vez os segredos do repositório: `ZENTRO_KEYSTORE_B64`, `ZENTRO_KEYSTORE_PASSWORD`, `ZENTRO_KEY_ALIAS` e `ZENTRO_KEY_PASSWORD`.
+
+> **Vindo da 1.0.0?** O APK da 1.0.0 foi assinado com outra chave. Desinstale-o uma vez e instale a 1.1.0; seus dados voltam do servidor ao entrar. No servidor, clique em **Reinstall** uma vez para receber o supervisor; daí em diante ele se atualiza sozinho.
+
 ## Arquitetura
 
 ```mermaid
@@ -55,20 +86,22 @@ flowchart LR
         API[REST + WebSocket]
         DB[(SQLite)]
         R[Agendador de avisos]
+        U[Supervisor + atualizador]
     end
     A <-->|sync + tempo real| API
     D <-->|sync + tempo real| API
     API --- DB
     R -->|lembretes reserva| TG[Telegram]
     S <-->|importação| MP[API Mercado Pago]
+    U -->|releases| GH[GitHub]
 ```
 
 ```
 zentro/
-├── shared/       # Kotlin Multiplatform: modelos, contrato da API, motor de recorrência e avisos, entrada rápida
-├── server/       # Ktor + Exposed + SQLite: API, sincronização, Telegram, Mercado Pago
+├── shared/       # Kotlin Multiplatform: modelos, API, recorrência e avisos, entrada rápida, Markdown e links das notas
+├── server/       # Ktor + Exposed + SQLite: API, sincronização, Telegram, Mercado Pago, supervisor e auto-update
 ├── composeApp/   # App Compose Multiplatform
-│   ├── commonMain/   # Telas, repositório local-first, fila offline, cliente HTTP
+│   ├── commonMain/   # Telas (agenda, notas, finanças), repositório local-first, fila offline, atualizações
 │   ├── androidMain/  # Alarmes, notificações, tela cheia, boot, WorkManager
 │   └── desktopMain/  # Bandeja, avisos flutuantes, alarme crítico, autostart
 ├── pterodactyl/  # Egg pronto para importar
@@ -90,7 +123,7 @@ zentro/
 4. **Inicie.** Quando aparecer `Zentro server started` no console, está no ar. Abra `http://IP:PORTA` no navegador para conferir.
 5. **Crie sua conta** pelo app e depois mude **Permitir novos cadastros** para `false`.
 
-> Para atualizar: mude a variável *Versão* (ou deixe `latest`) e clique em **Reinstall**. Os dados em `data/` são preservados.
+> Com `ZENTRO_AUTO_UPDATE=true` o servidor se atualiza sozinho. Para forçar uma versão específica, mude *Versão* e clique em **Reinstall**. Os dados em `data/` são sempre preservados.
 > Console do servidor: `status` mostra a versão e `stop` desliga com segurança.
 
 ### Variáveis
@@ -100,6 +133,7 @@ zentro/
 | `GITHUB_REPO` | `zyypj/zentro` | Repositório de onde baixar a release |
 | `VERSION` | `latest` | Tag da release a instalar |
 | `DOWNLOAD_URL` | vazio | Link direto para o `.jar` (opcional) |
+| `ZENTRO_AUTO_UPDATE` | `true` | Atualiza o servidor sozinho pelas releases do GitHub |
 | `ZENTRO_ALLOW_REGISTRATION` | `true` | Permite criar novas contas |
 | `TELEGRAM_BOT_TOKEN` | vazio | Ativa os avisos reserva pelo Telegram |
 | `ZENTRO_DATA_DIR` | `data` | Pasta do banco e da chave de sessão |
