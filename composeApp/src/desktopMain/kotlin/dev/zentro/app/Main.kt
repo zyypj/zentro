@@ -43,10 +43,9 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
-import androidx.compose.ui.window.Tray
-import androidx.compose.ui.window.TrayState
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
@@ -64,6 +63,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.awt.Dimension
 import java.awt.GraphicsEnvironment
@@ -110,10 +110,19 @@ fun main(args: Array<String>) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val storage = DesktopStorage(dir)
     val repo = Repository(storage, scope)
-    val trayState = TrayState()
-    val notifier = DesktopNotifier(repo, storage, trayState)
-    val startHidden = "--minimized" in args
-    val updates = UpdateManager(repo, DesktopInstaller(startHidden), scope)
+
+    // Estado da janela, compartilhado entre a interface, a bandeja e o atualizador.
+    val visible = MutableStateFlow("--minimized" !in args)
+    val minimized = MutableStateFlow(false)
+    val trayMenuAt = MutableStateFlow<IntOffset?>(null)
+
+    val tray = AppTray(onOpen = { visible.value = true }, onMenu = { x, y -> trayMenuAt.value = IntOffset(x, y) })
+    val notifier = DesktopNotifier(repo, storage, systemNotify = tray::notify)
+    val installer = DesktopInstaller(
+        isHidden = { !visible.value },
+        isIdle = { (!visible.value || minimized.value) && notifier.critical.value.isEmpty() },
+    )
+    val updates = UpdateManager(repo, installer, scope)
     val platform = DesktopPlatform(repo, notifier, updates)
     val alarm = Sound.AlarmLoop()
 
@@ -123,9 +132,10 @@ fun main(args: Array<String>) {
         storage.write("autostart.done", "1")
     }
 
+    tray.install()
     notifier.start(scope)
     repo.startLive()
-    // Ao abrir: se houver versão nova, baixa e instala sozinho. Com o app aberto, só avisa.
+    // Ao abrir: baixa e instala a versão nova. Aberto: verifica a cada hora e instala sem atrapalhar.
     updates.start()
     scope.launch {
         // Reserva para quando o tempo real estiver indisponível.
@@ -136,35 +146,29 @@ fun main(args: Array<String>) {
     }
 
     application {
-        var visible by remember { mutableStateOf(!startHidden) }
+        val isVisible by visible.collectAsState()
+        val menuAt by trayMenuAt.collectAsState()
         val icon = remember { ZentroIcon() }
-
-        Tray(
-            icon = icon,
-            state = trayState,
-            tooltip = "Zentro",
-            onAction = { visible = true },
-            menu = {
-                Item("Abrir Zentro", onClick = { visible = true })
-                Item("Sincronizar agora", onClick = { scope.launch { repo.sync() } })
-                Separator()
-                Item("Sair (desliga os avisos no PC)", onClick = { exitApplication() })
-            },
-        )
+        val quit = {
+            tray.remove()
+            exitApplication()
+        }
 
         val windowState = rememberWindowState(width = 1120.dp, height = 760.dp, position = WindowPosition(Alignment.Center))
         Window(
-            onCloseRequest = { visible = false },
-            visible = visible,
+            onCloseRequest = { visible.value = false },
+            visible = isVisible,
             title = "Zentro",
             icon = icon,
             state = windowState,
         ) {
             LaunchedEffect(Unit) { window.minimumSize = Dimension(420, 640) }
             val dark = isSystemInDarkTheme()
-            LaunchedEffect(dark, visible) { TitleBar.apply(window, dark) }
-            LaunchedEffect(visible) {
-                if (visible) {
+            LaunchedEffect(dark, isVisible) { TitleBar.apply(window, dark) }
+            LaunchedEffect(windowState.isMinimized) { minimized.value = windowState.isMinimized }
+            LaunchedEffect(isVisible) {
+                if (isVisible) {
+                    windowState.isMinimized = false
                     if (windowState.placement == WindowPlacement.Floating) window.toFront()
                     repo.sync()
                 }
@@ -172,8 +176,17 @@ fun main(args: Array<String>) {
             App(repo, platform)
         }
 
-        Toasts(notifier, onOpen = { visible = true })
-        CriticalAlerts(notifier, alarm, scope, onOpen = { visible = true })
+        menuAt?.let { at ->
+            TrayMenu(
+                at = at,
+                repo = repo,
+                onOpen = { visible.value = true },
+                onExit = quit,
+                onDismiss = { trayMenuAt.value = null },
+            )
+        }
+        Toasts(notifier, onOpen = { visible.value = true })
+        CriticalAlerts(notifier, alarm, scope, onOpen = { visible.value = true })
     }
     exitProcess(0)
 }

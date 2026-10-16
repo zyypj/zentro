@@ -176,7 +176,7 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                     }
                 }
             }
-            UpdateBanner(updateState, platform.updates.canInstall, onInstall = { platform.updates.installNow() }, onOpenPage = { uriHandler.openUri(it) })
+            UpdateBanner(updateState, platform.updates.canInstall, platform.updates.installsInBackground, onInstall = { platform.updates.installNow() }, onOpenPage = { uriHandler.openUri(it) })
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 when (tab) {
                     Tab.TODAY -> TodayScreen(
@@ -334,12 +334,14 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
 
 /** Faixa no topo avisando de versão nova, com o progresso do download. */
 @Composable
-private fun UpdateBanner(state: UpdateState, canInstall: Boolean, onInstall: () -> Unit, onOpenPage: (String) -> Unit) {
+private fun UpdateBanner(state: UpdateState, canInstall: Boolean, background: Boolean, onInstall: () -> Unit, onOpenPage: (String) -> Unit) {
     val (text, action) = when (state) {
         UpdateState.None -> return
         is UpdateState.Available -> "Zentro ${state.info.version} disponível" to (if (canInstall) "Atualizar" else "Baixar")
         is UpdateState.Downloading -> "Baixando a versão ${state.info.version}... ${(state.progress * 100).toInt()}%" to null
-        is UpdateState.Ready -> "Versão ${state.info.version} pronta" to "Instalar"
+        is UpdateState.Ready ->
+            if (background) "Versão ${state.info.version} pronta. O Zentro reinicia sozinho quando você minimizar." to "Reiniciar agora"
+            else "Versão ${state.info.version} pronta" to "Instalar"
         is UpdateState.Failed -> state.message to "Tentar de novo"
     }
     Surface(color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.fillMaxWidth()) {

@@ -20,8 +20,14 @@ interface Installer {
     /** Baixa o instalador; retorna true se o arquivo ficou pronto. */
     suspend fun download(url: String, version: String, onProgress: (Float) -> Unit): Boolean
 
-    /** Abre o instalador. No desktop isso fecha o app e o reabre já atualizado. */
-    fun launch(version: String): Boolean
+    /**
+     * Abre o instalador. No desktop isso fecha o app e o reabre já atualizado; quando não foi você
+     * quem pediu ([userRequested] = false), ele espera a janela estar fechada ou minimizada.
+     */
+    fun launch(version: String, userRequested: Boolean): Boolean
+
+    /** Também baixa e instala sozinho com o app aberto (desktop), em vez de só avisar. */
+    val installInBackground: Boolean get() = false
 
     /**
      * Pode instalar esta versão sozinho ao abrir? O desktop responde não se já tentou e o app
@@ -52,16 +58,19 @@ class UpdateManager(private val repo: Repository, private val installer: Install
 
     val current: String get() = BuildVersion.CURRENT
     val canInstall: Boolean get() = installer.assetSuffix != null
+    val installsInBackground: Boolean get() = installer.installInBackground
 
     fun start() {
         if (loop?.isActive == true) return
         loop = scope.launch {
             delay(4_000)
             // Funciona até na tela de login: sem servidor, a consulta vai direto ao GitHub.
-            check()?.let { if (canInstall && installer.autoInstallAllowed(it.version)) install(it) }
+            check()?.let { if (canInstall && installer.autoInstallAllowed(it.version)) install(it, userRequested = false) }
             while (isActive) {
-                delay(3 * 3_600_000L)
-                if (_state.value is UpdateState.None) check()
+                delay(if (installer.installInBackground) 3_600_000L else 3 * 3_600_000L)
+                if (_state.value !is UpdateState.None) continue
+                val info = check() ?: continue
+                if (canInstall && installer.installInBackground && installer.autoInstallAllowed(info.version)) install(info, userRequested = false)
             }
         }
     }
@@ -79,15 +88,15 @@ class UpdateManager(private val repo: Repository, private val installer: Install
             is UpdateState.Available -> s.info
             is UpdateState.Failed -> s.info
             is UpdateState.Ready -> {
-                installer.launch(s.info.version)
+                installer.launch(s.info.version, userRequested = true)
                 return
             }
             else -> return
         }
-        scope.launch { install(info) }
+        scope.launch { install(info, userRequested = true) }
     }
 
-    private suspend fun install(info: UpdateInfo) {
+    private suspend fun install(info: UpdateInfo, userRequested: Boolean) {
         val suffix = installer.assetSuffix ?: return
         val url = info.asset(suffix) ?: run {
             _state.value = UpdateState.Failed(info, "Atualização indisponível neste aparelho")
@@ -102,6 +111,6 @@ class UpdateManager(private val repo: Repository, private val installer: Install
             return
         }
         _state.value = UpdateState.Ready(info)
-        installer.launch(info.version)
+        installer.launch(info.version, userRequested)
     }
 }

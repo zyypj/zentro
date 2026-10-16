@@ -37,7 +37,7 @@ class AndroidInstaller(private val context: Context) : Installer {
         part.renameTo(target)
     }
 
-    override fun launch(version: String): Boolean {
+    override fun launch(version: String, userRequested: Boolean): Boolean {
         val apk = file(version)
         if (!apk.exists()) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
