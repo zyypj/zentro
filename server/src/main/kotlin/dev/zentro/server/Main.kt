@@ -29,6 +29,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -43,6 +44,7 @@ object BuildInfo {
 /** Permite que partes do servidor peçam para desligar com um código de saída (ex.: atualização). */
 object ServerControl {
     @Volatile var stop: ((Int) -> Unit)? = null
+    @Volatile var backup: (() -> Unit)? = null
 
     fun exit(code: Int) {
         thread(name = "zentro-exit") { stop?.invoke(code) ?: exitProcess(code) }
@@ -76,8 +78,9 @@ fun main() {
                     ServerControl.exit(0)
                 }
                 "status" -> log.info("Online · versão ${BuildInfo.VERSION} · porta ${config.port}")
+                "backup" -> ServerControl.backup?.invoke()
                 "" -> Unit
-                else -> log.info("Comandos: status, stop")
+                else -> log.info("Comandos: status, backup, stop")
             }
         }
     }
@@ -100,6 +103,8 @@ fun Application.zentro(config: Config, store: Store = Store(File(config.dataDir,
     val telegram = TelegramBot(config.telegramToken, http, store, onLinked = { hub.notify(it) })
     val mercadoPago = MercadoPago(http, store, onChanged = { hub.notify(it) })
     val releases = GitHubReleases(http, config.githubRepo)
+    val backups = Backups(store, File(config.dataDir, "backups"))
+    ServerControl.backup = { scope.launch { backups.backup("manual") } }
     val ctx = AppContext(config, store, auth, hub, telegram, mercadoPago, releases, scope)
 
     install(ContentNegotiation) { json(ZentroJson) }
@@ -132,7 +137,17 @@ fun Application.zentro(config: Config, store: Store = Store(File(config.dataDir,
         telegram.start(scope)
         mercadoPago.start(scope)
         Reminders(store, telegram).start(scope)
-        SelfUpdater(config, releases, http, restart = { ServerControl.exit(EXIT_UPDATE) }).start(scope)
+        backups.start(scope)
+        SelfUpdater(config, releases, http, restart = {
+            scope.launch {
+                backups.backup("antes-da-atualizacao")
+                ServerControl.exit(EXIT_UPDATE)
+            }
+        }).start(scope)
+        scope.launch {
+            val stats = store.stats()
+            log.info("Dados em ${store.file.absolutePath}: ${stats.users} conta(s), ${stats.events} compromisso(s), ${stats.notes} nota(s), ${stats.transactions} movimentação(ões)")
+        }
         // Esta linha é usada pelo egg do Pterodactyl para saber que o servidor terminou de iniciar.
         log.info("Zentro server started on port ${config.port} (v${BuildInfo.VERSION})")
     }

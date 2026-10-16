@@ -52,7 +52,7 @@ data class PrivateSettings(
  * do Pterodactyl. Todas as operações passam por um único thread, o que elimina SQLITE_BUSY.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class Store(file: File) {
+class Store(val file: File) {
     private val db = Database.connect(
         url = "jdbc:sqlite:${file.absolutePath}",
         driver = "org.sqlite.JDBC",
@@ -71,6 +71,28 @@ class Store(file: File) {
         transaction(db) {
             SchemaUtils.createMissingTablesAndColumns(Users, Events, People, NotesTable, Transactions, Settings, SentNotifications, Meta)
         }
+    }
+
+    /**
+     * Copia consistente do banco com `VACUUM INTO`, feita numa conexão separada (VACUUM não roda
+     * dentro de transação). O modo WAL deixa o servidor continuar lendo e gravando durante a cópia.
+     */
+    suspend fun backupTo(target: File) = withContext(Dispatchers.IO) {
+        target.parentFile?.mkdirs()
+        java.sql.DriverManager.getConnection("jdbc:sqlite:${file.absolutePath}").use { conn ->
+            conn.createStatement().use { it.execute("VACUUM INTO '${target.absolutePath.replace("'", "''")}'") }
+        }
+    }
+
+    data class Stats(val users: Long, val events: Long, val notes: Long, val transactions: Long)
+
+    suspend fun stats(): Stats = query {
+        Stats(
+            Users.selectAll().count(),
+            Events.selectAll().where { Events.deleted eq false }.count(),
+            NotesTable.selectAll().where { NotesTable.deleted eq false }.count(),
+            Transactions.selectAll().where { Transactions.deleted eq false }.count(),
+        )
     }
 
     private suspend fun <T> query(block: () -> T): T = withContext(dispatcher) { transaction(db) { block() } }
