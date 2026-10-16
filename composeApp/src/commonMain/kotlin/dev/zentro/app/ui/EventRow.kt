@@ -65,8 +65,8 @@ fun EventRow(event: Event, start: Long, tz: TimeZone, now: Long, onClick: () -> 
             Text(event.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val subtitle = buildList {
                 if (ongoing) add("Agora")
-                if (event.reminders.isNotEmpty()) add(event.reminders.min().let { Schedule.describeOffset(it).replaceFirstChar { c -> c.uppercase() } })
-                else add("Sem aviso")
+                if (event.reminders.isEmpty()) add("Sem aviso")
+                else add("Avisa " + event.reminders.sortedDescending().joinToString(", ") { shortOffset(it) })
                 if (event.notes.isNotBlank()) add(event.notes.lineSequence().first())
             }.joinToString(" · ")
             Text(
@@ -86,4 +86,11 @@ fun EventRow(event: Event, start: Long, tz: TimeZone, now: Long, onClick: () -> 
             }
         }
     }
+}
+
+private fun shortOffset(minutes: Int): String = when {
+    minutes <= 0 -> "na hora"
+    minutes % 1440 == 0 -> "${minutes / 1440}d antes"
+    minutes % 60 == 0 -> "${minutes / 60}h antes"
+    else -> "$minutes min antes"
 }
