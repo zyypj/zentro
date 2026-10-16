@@ -67,6 +67,8 @@ data class MercadoPagoStatus(
     val lastSync: Long? = null,
     val imported: Int = 0,
     val message: String? = null,
+    /** Caminho do webhook (somado à URL do servidor) para configurar no painel do Mercado Pago. */
+    val webhookPath: String? = null,
 )
 
 @Serializable
