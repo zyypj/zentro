@@ -29,6 +29,11 @@ data class Event(
     val color: Int = 0,
     /** De quem é o compromisso: null = seu; senão o id de uma [Person] (ex.: a agenda da namorada). */
     val personId: String? = null,
+    /** Conta a pagar: valor em centavos (null = compromisso comum). */
+    val billAmountCents: Long? = null,
+    val billCategory: String = "Contas",
+    /** Inícios das ocorrências já pagas — essas não avisam mais. */
+    val paid: List<Long> = emptyList(),
     val updatedAt: Long = 0,
     val deleted: Boolean = false,
 )

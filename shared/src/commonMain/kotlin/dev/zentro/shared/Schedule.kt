@@ -24,6 +24,8 @@ data class ReminderTrigger(
     val minutesBefore: Int,
     val triggerAt: Long,
     val critical: Boolean,
+    /** Valor da conta, quando o compromisso é uma conta a pagar. */
+    val amountCents: Long? = null,
 ) {
     /** Chave estável usada para nunca disparar o mesmo aviso duas vezes. */
     val key: String get() = "$eventId@$occurrenceStart-$minutesBefore"
@@ -103,10 +105,11 @@ object Schedule {
             if (event.deleted || event.reminders.isEmpty()) continue
             val maxBefore = event.reminders.max().coerceAtLeast(0)
             for (start in occurrences(event.copy(endAt = null), from, to + maxBefore * MINUTE, tz)) {
+                if (start in event.paid) continue // conta já paga: não avisa mais
                 for (minutes in event.reminders.distinct()) {
                     val at = start - minutes * MINUTE
                     if (at in from until to) {
-                        result += ReminderTrigger(event.id, event.title, start, minutes, at, event.critical)
+                        result += ReminderTrigger(event.id, event.title, start, minutes, at, event.critical, event.billAmountCents)
                     }
                 }
             }

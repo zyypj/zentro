@@ -12,7 +12,15 @@ import kotlinx.datetime.plus
  * "-45,90 almoço", "+1200 salário".
  */
 object QuickInput {
-    data class EventDraft(val title: String, val date: LocalDate, val time: LocalTime?)
+    data class EventDraft(
+        val title: String,
+        val date: LocalDate,
+        val time: LocalTime?,
+        val recurrence: Recurrence = Recurrence.NONE,
+        /** Valor encontrado no texto ("49,90", "R$ 120"): vira uma conta a pagar. */
+        val amountCents: Long? = null,
+    )
+
     data class TransactionDraft(val type: TxType, val amountCents: Long, val description: String)
 
     private val timeRegex = Regex("""(?<![\d/])(?:às\s+|as\s+)?([01]?\d|2[0-3])(?:h([0-5]\d)?|:([0-5]\d))(?![\d/])""", RegexOption.IGNORE_CASE)
@@ -27,11 +35,56 @@ object QuickInput {
         "amanhã" to 1, "amanha" to 1, "hoje" to 0,
     )
 
+    /** "R$ 49,90", "R$ 120" ou um valor com centavos solto ("49,90"). */
+    private val amountRegex = Regex("""R\$\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)|(?<![\d/:,.])(\d{1,3}(?:\.\d{3})*,\d{2})(?![\d/:])""", RegexOption.IGNORE_CASE)
+    private val monthlyDayRegex = Regex("""\s(?:todo|toda)\s+(?:m[eê]s\s+)?(?:no\s+)?dia\s+(\d{1,2})\s""", RegexOption.IGNORE_CASE)
+    private val simpleRecurrences = listOf(
+        " dias úteis " to Recurrence.WEEKDAYS, " dias uteis " to Recurrence.WEEKDAYS,
+        " todos os dias " to Recurrence.DAILY, " todo dia " to Recurrence.DAILY,
+        " toda semana " to Recurrence.WEEKLY, " todo mês " to Recurrence.MONTHLY, " todo mes " to Recurrence.MONTHLY,
+        " todo ano " to Recurrence.YEARLY,
+    )
+
     fun parseEvent(input: String, today: LocalDate): EventDraft? {
         var text = " ${input.trim()} "
         if (text.isBlank()) return null
         var date: LocalDate? = null
         var time: LocalTime? = null
+        var recurrence = Recurrence.NONE
+        var amount: Long? = null
+
+        amountRegex.find(text)?.let { m ->
+            amount = Format.parseMoney(m.groupValues[1].ifEmpty { m.groupValues[2] })?.takeIf { it > 0 }
+            if (amount != null) text = text.removeRange(m.range)
+        }
+
+        // "todo dia 5" = todo mês no dia 5 (o caso clássico de conta a pagar).
+        monthlyDayRegex.find(text)?.let { m ->
+            val day = m.groupValues[1].toInt()
+            if (day in 1..31) {
+                recurrence = Recurrence.MONTHLY
+                date = nextDayOfMonth(today, day)
+                text = text.removeRange(m.range.first, m.range.last)
+            }
+        }
+        if (recurrence == Recurrence.NONE) {
+            val lower = text.lowercase()
+            simpleRecurrences.firstOrNull { lower.contains(it.first) }?.let { (phrase, rec) ->
+                recurrence = rec
+                val idx = lower.indexOf(phrase)
+                text = text.removeRange(idx, idx + phrase.length - 1)
+            }
+        }
+        if (recurrence == Recurrence.NONE) {
+            // "toda segunda" = semanal, começando na próxima segunda.
+            val lower = text.lowercase()
+            for (word in weekdayNames.keys) {
+                val match = Regex("""\s(?:toda|todo)\s+$word(?:-feira)?\s""").find(lower) ?: continue
+                recurrence = Recurrence.WEEKLY
+                text = text.removeRange(match.range.first, match.range.last) + " $word "
+                break
+            }
+        }
 
         timeRegex.find(text)?.let { m ->
             val hour = m.groupValues[1].toInt()
@@ -83,7 +136,19 @@ object QuickInput {
         val title = text.replace(Regex("\\s+"), " ").trim().trim(',', '-', '.').trim()
             .replaceFirstChar { it.uppercase() }
         if (title.isEmpty()) return null
-        return EventDraft(title, date ?: today, time)
+        return EventDraft(title, date ?: today, time, recurrence, amount)
+    }
+
+    /** Próxima data com o dia [day] (hoje conta); em meses curtos, usa o último dia do mês. */
+    private fun nextDayOfMonth(today: LocalDate, day: Int): LocalDate {
+        fun inMonth(year: Int, month: Int): LocalDate {
+            val last = (31 downTo 28).first { runCatching { LocalDate(year, month, it) }.isSuccess }
+            return LocalDate(year, month, day.coerceAtMost(last))
+        }
+        val candidate = inMonth(today.year, today.monthNumber)
+        if (candidate >= today) return candidate
+        val next = today.plus(1, DateTimeUnit.MONTH)
+        return inMonth(next.year, next.monthNumber)
     }
 
     private val moneyRegex = Regex("""^\s*([+-])?\s*(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(.*)$""", RegexOption.IGNORE_CASE)
