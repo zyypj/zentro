@@ -14,7 +14,6 @@ data class Config(
     val jwtSecret: String,
     val allowRegistration: Boolean,
     val telegramToken: String?,
-    val publicUrl: String?,
 ) {
     companion object {
         fun fromEnv(env: Map<String, String> = System.getenv()): Config {
@@ -28,7 +27,6 @@ data class Config(
                 jwtSecret = value("ZENTRO_JWT_SECRET") ?: persistentSecret(dataDir),
                 allowRegistration = value("ZENTRO_ALLOW_REGISTRATION")?.lowercase() !in setOf("false", "0", "no", "nao", "não"),
                 telegramToken = value("TELEGRAM_BOT_TOKEN"),
-                publicUrl = value("ZENTRO_PUBLIC_URL")?.trimEnd('/'),
             )
         }
 

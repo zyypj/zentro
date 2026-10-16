@@ -35,7 +35,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientCon
 class ApiTest {
     private fun ApplicationTestBuilder.setup(allowRegistration: Boolean = true): HttpClient {
         val dir = Files.createTempDirectory("zentro-test").toFile()
-        val config = Config(0, dir, "test-secret", allowRegistration, telegramToken = null, publicUrl = null)
+        val config = Config(0, dir, "test-secret", allowRegistration, telegramToken = null)
         application { zentro(config, Store(dir.resolve("test.db"))) }
         return createClient { install(ClientContentNegotiation) { json(ZentroJson) } }
     }
