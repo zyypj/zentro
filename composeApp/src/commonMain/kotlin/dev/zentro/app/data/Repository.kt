@@ -270,6 +270,40 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         }
     }
 
+    /**
+     * Marca uma conta como paga (ou desfaz). Pagar lança a saída nas finanças com um id fixo e
+     * desliga os avisos daquele mês; desfazer apaga o lançamento.
+     */
+    fun setBillPaid(event: Event, occurrence: Long, paid: Boolean) = scope.launch {
+        val now = Schedule.now()
+        val current = _data.value.events[event.id] ?: event
+        val amount = current.billAmountCents ?: return@launch
+        val updated = current.copy(
+            paid = if (paid) (current.paid + occurrence).distinct() else current.paid - occurrence,
+            updatedAt = now,
+        )
+        val txId = dev.zentro.shared.Bills.paymentId(event.id, occurrence)
+        update { d ->
+            val withEvent = d.copy(events = d.events + (updated.id to updated))
+                .enqueue(PendingOp(OpKind.UPSERT_EVENT, updated.id, event = updated))
+            if (paid) {
+                val tx = Transaction(
+                    id = txId,
+                    type = dev.zentro.shared.TxType.EXPENSE,
+                    amountCents = amount,
+                    description = current.title,
+                    category = current.billCategory,
+                    date = now,
+                    updatedAt = now,
+                )
+                withEvent.copy(transactions = withEvent.transactions + (txId to tx)).enqueue(PendingOp(OpKind.UPSERT_TX, txId, transaction = tx))
+            } else {
+                withEvent.copy(transactions = withEvent.transactions - txId).enqueue(PendingOp(OpKind.DELETE_TX, txId))
+            }
+        }
+        sync()
+    }
+
     // ---------------- finanças ----------------
 
     fun saveTransaction(tx: Transaction) = scope.launch {
