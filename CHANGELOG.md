@@ -2,6 +2,25 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.2.0] - 2026-10-16
+
+### Novidades
+- **Contas a pagar:** qualquer compromisso pode virar uma conta com valor e categoria (ex.: hospedagem todo dia 5).
+  - Avisa um dia antes e no dia, com o valor na notificação.
+  - O botão **Pagar** lança a saída nas finanças e para os avisos daquele mês.
+  - Finanças ganhou "Contas do mês" (a pagar, pago, atrasada) e a tela Hoje fixa no topo as contas atrasadas.
+  - Entrada rápida: `Hospedagem todo dia 5 49,90`, `toda segunda`, `todo dia`, `dias úteis`.
+- **Backups automáticos no servidor:** ao iniciar, todo dia às 03:30 e antes de cada atualização, guardando os 20 mais recentes em `data/backups`. Também pelo comando `backup` no console.
+- **Proteção de dados no app:** sair da conta ou ter a sessão expirada guarda uma cópia local. Ao entrar numa conta vazia, o app oferece recuperar os dados. Em Ajustes há "Enviar meus dados de novo".
+- **Windows:**
+  - A barra de título acompanha as cores do app (modo escuro e claro).
+  - Novo menu da bandeja, com o próximo compromisso e "Iniciar com o Windows".
+  - O app se atualiza também com ele aberto, assim que estiver minimizado ou na bandeja.
+
+### Melhorias
+- Textos técnicos (servidor, sincronização, tokens) foram trocados por mensagens simples.
+- O servidor registra no console onde estão os dados e quantos itens existem, para facilitar a conferência.
+
 ## [1.1.1] - 2026-10-16
 
 ### Correções
