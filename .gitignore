@@ -30,3 +30,6 @@ captures/
 # OS
 .DS_Store
 Thumbs.db
+
+# APKs gerados localmente
+/dist/
