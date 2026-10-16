@@ -7,12 +7,15 @@ import dev.zentro.shared.AuthResponse
 import dev.zentro.shared.Event
 import dev.zentro.shared.MercadoPagoConnect
 import dev.zentro.shared.MercadoPagoStatus
+import dev.zentro.shared.Note
+import dev.zentro.shared.Person
 import dev.zentro.shared.ReviewRequest
 import dev.zentro.shared.ServerInfo
 import dev.zentro.shared.SettingsPatch
 import dev.zentro.shared.SyncResponse
 import dev.zentro.shared.TelegramLink
 import dev.zentro.shared.Transaction
+import dev.zentro.shared.UpdateInfo
 import dev.zentro.shared.UserSettings
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -26,13 +29,17 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.contentLength
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.utils.io.readAvailable
 import io.ktor.websocket.Frame
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
@@ -87,6 +94,22 @@ class ApiClient(serverUrl: String, private val token: String?) {
         exec { http.delete("$base${ApiRoutes.TRANSACTIONS}/$id") { prepare() } }
     }
 
+    suspend fun putPerson(person: Person): Person =
+        exec { http.put("$base${ApiRoutes.PEOPLE}/${person.id}") { prepare(); setBody(person) } }.body()
+
+    suspend fun deletePerson(id: String) {
+        exec { http.delete("$base${ApiRoutes.PEOPLE}/$id") { prepare() } }
+    }
+
+    suspend fun putNote(note: Note): Note =
+        exec { http.put("$base${ApiRoutes.NOTES}/${note.id}") { prepare(); setBody(note) } }.body()
+
+    suspend fun deleteNote(id: String) {
+        exec { http.delete("$base${ApiRoutes.NOTES}/$id") { prepare() } }
+    }
+
+    suspend fun latestRelease(): UpdateInfo = exec { http.get("$base${ApiRoutes.UPDATE}") }.body()
+
     suspend fun review(date: String): UserSettings =
         exec { http.post("$base${ApiRoutes.REVIEW}") { prepare(); setBody(ReviewRequest(date)) } }.body()
 
@@ -140,6 +163,25 @@ class ApiClient(serverUrl: String, private val token: String?) {
                 requestTimeoutMillis = 30_000
             }
             expectSuccess = false
+        }
+
+        /** Baixa um arquivo grande (instalador) em pedaços, sem limite de tempo, informando o progresso. */
+        suspend fun download(url: String, write: (ByteArray, Int) -> Unit, onProgress: (Float) -> Unit) {
+            wsHttp.prepareGet(url).execute { response ->
+                if (!response.status.isSuccess()) throw ApiFailure("Download falhou (HTTP ${response.status.value})", response.status.value)
+                val total = response.contentLength() ?: -1L
+                val channel = response.bodyAsChannel()
+                val buffer = ByteArray(64 * 1024)
+                var done = 0L
+                while (true) {
+                    val read = channel.readAvailable(buffer, 0, buffer.size)
+                    if (read < 0) break
+                    if (read == 0) continue
+                    write(buffer, read)
+                    done += read
+                    if (total > 0) onProgress(done.toFloat() / total)
+                }
+            }
         }
 
         // Cliente separado, sem timeout de requisição, para a conexão de tempo real de longa duração.

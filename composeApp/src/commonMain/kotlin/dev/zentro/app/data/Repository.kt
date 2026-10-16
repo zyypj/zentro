@@ -2,6 +2,8 @@ package dev.zentro.app.data
 
 import dev.zentro.shared.Event
 import dev.zentro.shared.MercadoPagoStatus
+import dev.zentro.shared.Note
+import dev.zentro.shared.Person
 import dev.zentro.shared.Schedule
 import dev.zentro.shared.SettingsPatch
 import dev.zentro.shared.TelegramLink
@@ -61,7 +63,7 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
             withContext(Dispatchers.IO) { storage.write(FILE, ApiClient.json.encodeToString(AppData.serializer(), after)) }
             before to after
         }
-        if (before.events != after.events || before.settings != after.settings || before.session != after.session) {
+        if (before.events != after.events || before.settings != after.settings || before.session != after.session || before.people != after.people) {
             runCatching { onScheduleChanged?.invoke(after) }
         }
     }
@@ -77,6 +79,10 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
                 { o -> (o.kind == OpKind.UPSERT_EVENT || o.kind == OpKind.DELETE_EVENT) && o.targetId == op.targetId }
             OpKind.UPSERT_TX, OpKind.DELETE_TX ->
                 { o -> (o.kind == OpKind.UPSERT_TX || o.kind == OpKind.DELETE_TX) && o.targetId == op.targetId }
+            OpKind.UPSERT_PERSON, OpKind.DELETE_PERSON ->
+                { o -> (o.kind == OpKind.UPSERT_PERSON || o.kind == OpKind.DELETE_PERSON) && o.targetId == op.targetId }
+            OpKind.UPSERT_NOTE, OpKind.DELETE_NOTE ->
+                { o -> (o.kind == OpKind.UPSERT_NOTE || o.kind == OpKind.DELETE_NOTE) && o.targetId == op.targetId }
             OpKind.REVIEW -> { o -> o.kind == OpKind.REVIEW }
             OpKind.SETTINGS -> { _ -> false }
         }
@@ -149,6 +155,54 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         sync()
     }
 
+    // ---------------- pessoas ----------------
+
+    fun savePerson(person: Person) = scope.launch {
+        val saved = person.copy(updatedAt = Schedule.now(), deleted = false)
+        update {
+            it.copy(people = it.people + (saved.id to saved))
+                .enqueue(PendingOp(OpKind.UPSERT_PERSON, saved.id, person = saved))
+        }
+        sync()
+    }
+
+    fun deletePerson(id: String) = scope.launch {
+        update { it.copy(people = it.people - id).enqueue(PendingOp(OpKind.DELETE_PERSON, id)) }
+        sync()
+    }
+
+    // ---------------- anotações ----------------
+
+    /**
+     * Salva na hora no aparelho; o envio ao servidor espera você parar de digitar por alguns
+     * segundos, para não mandar uma requisição a cada letra.
+     */
+    fun saveNote(note: Note) = scope.launch {
+        val now = Schedule.now()
+        val saved = note.copy(updatedAt = now, createdAt = note.createdAt.takeIf { it > 0 } ?: now, deleted = false)
+        update {
+            it.copy(notes = it.notes + (saved.id to saved))
+                .enqueue(PendingOp(OpKind.UPSERT_NOTE, saved.id, note = saved))
+        }
+        requestSync()
+    }
+
+    fun deleteNote(id: String) = scope.launch {
+        update { it.copy(notes = it.notes - id).enqueue(PendingOp(OpKind.DELETE_NOTE, id)) }
+        sync()
+    }
+
+    private var pendingSync: Job? = null
+
+    /** Sincroniza daqui a pouco, juntando várias alterações seguidas num envio só. */
+    fun requestSync(delayMillis: Long = 2_500) {
+        pendingSync?.cancel()
+        pendingSync = scope.launch {
+            delay(delayMillis)
+            sync()
+        }
+    }
+
     // ---------------- finanças ----------------
 
     fun saveTransaction(tx: Transaction) = scope.launch {
@@ -177,6 +231,10 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
             OpKind.DELETE_TX -> client.deleteTransaction(op.targetId)
             OpKind.REVIEW -> client.review(op.date!!)
             OpKind.SETTINGS -> client.patchSettings(op.patch!!)
+            OpKind.UPSERT_PERSON -> client.putPerson(op.person!!)
+            OpKind.DELETE_PERSON -> client.deletePerson(op.targetId)
+            OpKind.UPSERT_NOTE -> client.putNote(op.note!!)
+            OpKind.DELETE_NOTE -> client.deleteNote(op.targetId)
         }
     }
 
@@ -213,10 +271,22 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
                     if (t.id in pendingIds) continue
                     if (t.deleted) transactions.remove(t.id) else transactions[t.id] = t
                 }
+                val people = d.people.toMutableMap()
+                for (p in response.people) {
+                    if (p.id in pendingIds) continue
+                    if (p.deleted) people.remove(p.id) else people[p.id] = p
+                }
+                val notes = d.notes.toMutableMap()
+                for (n in response.notes) {
+                    if (n.id in pendingIds) continue
+                    if (n.deleted) notes.remove(n.id) else notes[n.id] = n
+                }
                 val settingsPending = d.outbox.any { it.kind == OpKind.REVIEW || it.kind == OpKind.SETTINGS }
                 d.copy(
                     events = events,
                     transactions = transactions,
+                    people = people,
+                    notes = notes,
                     settings = if (settingsPending) d.settings else response.settings,
                     lastSync = response.serverTime,
                     lastSyncOk = Schedule.now(),
@@ -282,6 +352,7 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
     suspend fun mercadoPago(): Result<MercadoPagoStatus> = online { it.mercadoPago() }
     suspend fun mercadoPagoConnect(token: String): Result<MercadoPagoStatus> = online { it.mercadoPagoConnect(token) }.also { sync() }
     suspend fun mercadoPagoDisconnect(): Result<Unit> = online { it.mercadoPagoDisconnect() }.also { sync() }
+    suspend fun latestRelease(): Result<dev.zentro.shared.UpdateInfo> = online { it.latestRelease() }
     suspend fun mercadoPagoSync(): Result<MercadoPagoStatus> = online { it.mercadoPagoSync() }.also { sync() }
 
     private companion object {

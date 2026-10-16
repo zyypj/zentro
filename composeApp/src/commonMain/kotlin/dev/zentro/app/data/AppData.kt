@@ -1,6 +1,8 @@
 package dev.zentro.app.data
 
 import dev.zentro.shared.Event
+import dev.zentro.shared.Note
+import dev.zentro.shared.Person
 import dev.zentro.shared.SettingsPatch
 import dev.zentro.shared.Transaction
 import dev.zentro.shared.UserDto
@@ -12,7 +14,7 @@ import kotlin.uuid.Uuid
 data class Session(val serverUrl: String, val token: String, val user: UserDto)
 
 @Serializable
-enum class OpKind { UPSERT_EVENT, DELETE_EVENT, UPSERT_TX, DELETE_TX, REVIEW, SETTINGS }
+enum class OpKind { UPSERT_EVENT, DELETE_EVENT, UPSERT_TX, DELETE_TX, REVIEW, SETTINGS, UPSERT_PERSON, DELETE_PERSON, UPSERT_NOTE, DELETE_NOTE }
 
 /**
  * Uma alteração feita no aparelho que ainda não chegou ao servidor.
@@ -24,6 +26,8 @@ data class PendingOp(
     val targetId: String = "",
     val event: Event? = null,
     val transaction: Transaction? = null,
+    val person: Person? = null,
+    val note: Note? = null,
     val date: String? = null,
     val patch: SettingsPatch? = null,
     val opId: String = Uuid.random().toString(),
@@ -35,6 +39,8 @@ data class AppData(
     val session: Session? = null,
     val events: Map<String, Event> = emptyMap(),
     val transactions: Map<String, Transaction> = emptyMap(),
+    val people: Map<String, Person> = emptyMap(),
+    val notes: Map<String, Note> = emptyMap(),
     val settings: UserSettings = UserSettings(),
     val outbox: List<PendingOp> = emptyList(),
     val lastSync: Long = 0,
@@ -42,6 +48,10 @@ data class AppData(
 ) {
     val activeEvents: List<Event> get() = events.values.filter { !it.deleted }
     val activeTransactions: List<Transaction> get() = transactions.values.filter { !it.deleted }
+    val activePeople: List<Person> get() = people.values.filter { !it.deleted }.sortedBy { it.name.lowercase() }
+    val activeNotes: List<Note> get() = notes.values.filter { !it.deleted }
+
+    fun personName(id: String?): String? = id?.let { people[it] }?.takeIf { !it.deleted }?.name
 }
 
 data class SyncStatus(
