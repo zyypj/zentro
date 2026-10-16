@@ -2,6 +2,8 @@ package dev.zentro.server.db
 
 import dev.zentro.shared.DEFAULT_TIMEZONE
 import dev.zentro.shared.Event
+import dev.zentro.shared.Note
+import dev.zentro.shared.Person
 import dev.zentro.shared.Recurrence
 import dev.zentro.shared.Transaction
 import dev.zentro.shared.TxSource
@@ -67,7 +69,7 @@ class Store(file: File) {
     init {
         TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
         transaction(db) {
-            SchemaUtils.createMissingTablesAndColumns(Users, Events, Transactions, Settings, SentNotifications, Meta)
+            SchemaUtils.createMissingTablesAndColumns(Users, Events, People, NotesTable, Transactions, Settings, SentNotifications, Meta)
         }
     }
 
@@ -112,6 +114,7 @@ class Store(file: File) {
             it[critical] = stored.critical
             it[recurrence] = stored.recurrence.name
             it[color] = stored.color
+            it[personId] = stored.personId
             it[updatedAt] = now
             it[deleted] = stored.deleted
         }
@@ -131,6 +134,68 @@ class Store(file: File) {
 
     suspend fun activeEvents(userId: Long): List<Event> = query {
         Events.selectAll().where { (Events.userId eq userId) and (Events.deleted eq false) }.map { it.toEvent() }
+    }
+
+    // ---------- pessoas ----------
+
+    suspend fun upsertPerson(userId: Long, person: Person, now: Long): Person = query {
+        val stored = person.copy(updatedAt = now)
+        People.upsert {
+            it[People.userId] = userId
+            it[id] = stored.id
+            it[name] = stored.name
+            it[color] = stored.color
+            it[updatedAt] = now
+            it[deleted] = stored.deleted
+        }
+        stored
+    }
+
+    suspend fun deletePerson(userId: Long, id: String, now: Long): Boolean = query {
+        People.update({ (People.userId eq userId) and (People.id eq id) }) {
+            it[deleted] = true
+            it[updatedAt] = now
+        } > 0
+    }
+
+    suspend fun peopleSince(userId: Long, since: Long): List<Person> = query {
+        People.selectAll().where { (People.userId eq userId) and (People.updatedAt greaterEq since) }.map { it.toPerson() }
+    }
+
+    suspend fun activePeople(userId: Long): List<Person> = query {
+        People.selectAll().where { (People.userId eq userId) and (People.deleted eq false) }.map { it.toPerson() }
+    }
+
+    // ---------- anotações ----------
+
+    suspend fun upsertNote(userId: Long, note: Note, now: Long): Note = query {
+        val existing = NotesTable.selectAll().where { (NotesTable.userId eq userId) and (NotesTable.id eq note.id) }
+            .firstOrNull()?.get(NotesTable.createdAt)
+        val stored = note.copy(updatedAt = now, createdAt = existing ?: note.createdAt.takeIf { it > 0 } ?: now)
+        NotesTable.upsert {
+            it[NotesTable.userId] = userId
+            it[id] = stored.id
+            it[title] = stored.title
+            it[content] = stored.content
+            it[folder] = stored.folder
+            it[icon] = stored.icon
+            it[pinned] = stored.pinned
+            it[createdAt] = stored.createdAt
+            it[updatedAt] = now
+            it[deleted] = stored.deleted
+        }
+        stored
+    }
+
+    suspend fun deleteNote(userId: Long, id: String, now: Long): Boolean = query {
+        NotesTable.update({ (NotesTable.userId eq userId) and (NotesTable.id eq id) }) {
+            it[deleted] = true
+            it[updatedAt] = now
+        } > 0
+    }
+
+    suspend fun notesSince(userId: Long, since: Long): List<Note> = query {
+        NotesTable.selectAll().where { (NotesTable.userId eq userId) and (NotesTable.updatedAt greaterEq since) }.map { it.toNote() }
     }
 
     // ---------- finanças ----------
@@ -313,8 +378,29 @@ class Store(file: File) {
         critical = this[Events.critical],
         recurrence = runCatching { Recurrence.valueOf(this[Events.recurrence]) }.getOrDefault(Recurrence.NONE),
         color = this[Events.color],
+        personId = this[Events.personId],
         updatedAt = this[Events.updatedAt],
         deleted = this[Events.deleted],
+    )
+
+    private fun ResultRow.toPerson() = Person(
+        id = this[People.id],
+        name = this[People.name],
+        color = this[People.color],
+        updatedAt = this[People.updatedAt],
+        deleted = this[People.deleted],
+    )
+
+    private fun ResultRow.toNote() = Note(
+        id = this[NotesTable.id],
+        title = this[NotesTable.title],
+        content = this[NotesTable.content],
+        folder = this[NotesTable.folder],
+        icon = this[NotesTable.icon],
+        pinned = this[NotesTable.pinned],
+        createdAt = this[NotesTable.createdAt],
+        updatedAt = this[NotesTable.updatedAt],
+        deleted = this[NotesTable.deleted],
     )
 
     private fun ResultRow.toTransaction() = Transaction(

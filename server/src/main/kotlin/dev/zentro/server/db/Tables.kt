@@ -24,6 +24,31 @@ object Events : Table("events") {
     val critical = bool("critical")
     val recurrence = varchar("recurrence", 16)
     val color = integer("color")
+    val personId = varchar("person_id", 64).nullable()
+    val updatedAt = long("updated_at").index()
+    val deleted = bool("deleted")
+    override val primaryKey = PrimaryKey(userId, id)
+}
+
+object People : Table("people") {
+    val userId = long("user_id").references(Users.id)
+    val id = varchar("id", 64)
+    val name = varchar("name", 80)
+    val color = integer("color")
+    val updatedAt = long("updated_at").index()
+    val deleted = bool("deleted")
+    override val primaryKey = PrimaryKey(userId, id)
+}
+
+object NotesTable : Table("notes") {
+    val userId = long("user_id").references(Users.id)
+    val id = varchar("id", 64)
+    val title = varchar("title", 300)
+    val content = text("content")
+    val folder = varchar("folder", 200)
+    val icon = varchar("icon", 16)
+    val pinned = bool("pinned")
+    val createdAt = long("created_at")
     val updatedAt = long("updated_at").index()
     val deleted = bool("deleted")
     override val primaryKey = PrimaryKey(userId, id)
