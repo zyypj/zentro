@@ -27,6 +27,35 @@ data class Event(
     val critical: Boolean = false,
     val recurrence: Recurrence = Recurrence.NONE,
     val color: Int = 0,
+    /** De quem é o compromisso: null = seu; senão o id de uma [Person] (ex.: a agenda da namorada). */
+    val personId: String? = null,
+    val updatedAt: Long = 0,
+    val deleted: Boolean = false,
+)
+
+/** Alguém cuja agenda você acompanha junto com a sua (namorada, filho, sócio...). */
+@Serializable
+data class Person(
+    val id: String,
+    val name: String,
+    val color: Int = 4,
+    val updatedAt: Long = 0,
+    val deleted: Boolean = false,
+)
+
+/**
+ * Uma anotação em Markdown. Links entre notas usam `[[Título]]`, tags usam `#tag` e
+ * tarefas usam `- [ ]`, como no Obsidian. [folder] aceita subpastas com "/" (ex.: "Faculdade/Cálculo").
+ */
+@Serializable
+data class Note(
+    val id: String,
+    val title: String,
+    val content: String = "",
+    val folder: String = Notes.DEFAULT_FOLDER,
+    val icon: String = "",
+    val pinned: Boolean = false,
+    val createdAt: Long = 0,
     val updatedAt: Long = 0,
     val deleted: Boolean = false,
 )

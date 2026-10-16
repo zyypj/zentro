@@ -17,6 +17,12 @@ object ApiRoutes {
     const val MERCADO_PAGO = "/api/mercadopago"
     const val MERCADO_PAGO_SYNC = "/api/mercadopago/sync"
     const val LIVE = "/api/live"
+    const val PEOPLE = "/api/people"
+    const val NOTES = "/api/notes"
+    const val UPDATE = "/api/update"
+
+    /** Repositório oficial; o servidor pode apontar para outro com a variável GITHUB_REPO. */
+    const val DEFAULT_REPO = "zyypj/zentro"
 }
 
 @Serializable
@@ -47,6 +53,8 @@ data class SyncResponse(
     val events: List<Event>,
     val transactions: List<Transaction>,
     val settings: UserSettings,
+    val people: List<Person> = emptyList(),
+    val notes: List<Note> = emptyList(),
 )
 
 @Serializable
@@ -77,3 +85,16 @@ data class ApiError(val message: String)
 /** Mensagem enviada pelo WebSocket de tempo real: avisa que há dados novos para sincronizar. */
 @Serializable
 data class LiveMessage(val type: String, val serverTime: Long)
+
+/** Última versão publicada no GitHub Releases, com os links de download de cada plataforma. */
+@Serializable
+data class UpdateInfo(
+    val version: String,
+    val pageUrl: String,
+    val notes: String = "",
+    val publishedAt: String = "",
+    /** nome do arquivo → link de download */
+    val assets: Map<String, String> = emptyMap(),
+) {
+    fun asset(suffix: String): String? = assets.entries.firstOrNull { it.key.endsWith(suffix, ignoreCase = true) }?.value
+}
