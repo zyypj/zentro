@@ -104,6 +104,8 @@ fun Application.zentro(config: Config, store: Store = Store(File(config.dataDir,
         exception<ApiException> { call, e -> call.respond(e.status, ApiError(e.message)) }
         exception<BadRequestException> { call, _ -> call.respond(HttpStatusCode.BadRequest, ApiError("Requisição inválida")) }
         exception<Throwable> { call, e ->
+            // Conexão encerrada pelo cliente (ex.: app fechado com o WebSocket aberto) não é erro.
+            if (e is kotlinx.coroutines.CancellationException) return@exception
             log.error("Erro inesperado em ${call.request.local.uri}", e)
             call.respond(HttpStatusCode.InternalServerError, ApiError("Erro interno no servidor"))
         }
