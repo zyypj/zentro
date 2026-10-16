@@ -106,47 +106,53 @@ fun ApplicationScope.TrayMenu(at: IntOffset, repo: Repository, onOpen: () -> Uni
             window.requestFocus()
         }
         ZentroTheme {
-            val colors = MaterialTheme.colorScheme
-            Box(
-                Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)).background(colors.surfaceContainer)
-                    .border(1.dp, colors.outlineVariant, RoundedCornerShape(14.dp)),
-            ) {
-                Column(Modifier.padding(6.dp)) {
-                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ZentroLogo(34)
-                        Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                            Text("Zentro", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                next?.let { (event, start) ->
-                                    val local = Schedule.toLocal(start, tz)
-                                    val day = if (local.date == Schedule.today(tz)) "" else "amanhã "
-                                    "Próximo: ${event.title} · $day${Format.time(local)}"
-                                } ?: if (status.error == null) "Nada marcado por enquanto" else "Sem conexão agora",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp), color = colors.outlineVariant)
-                    MenuItem(Icons.Rounded.Home, "Abrir o Zentro") {
-                        onDismiss()
-                        onOpen()
-                    }
-                    if (AutoStart.supported) {
-                        MenuItem(if (autoStart) Icons.Rounded.Check else null, "Iniciar com o Windows") {
-                            AutoStart.setEnabled(!autoStart)
-                            autoStart = AutoStart.isEnabled()
-                        }
-                    }
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp), color = colors.outlineVariant)
-                    MenuItem(Icons.AutoMirrored.Rounded.ExitToApp, "Fechar o Zentro", "Os avisos deste PC param até você abrir de novo", ZColors.Expense) {
-                        onDismiss()
-                        onExit()
-                    }
+            TrayMenuContent(
+                subtitle = next?.let { (event, start) ->
+                    val local = Schedule.toLocal(start, tz)
+                    val day = if (local.date == Schedule.today(tz)) "" else "amanhã "
+                    "Próximo: ${event.title} · $day${Format.time(local)}"
+                } ?: if (status.error == null) "Nada marcado por enquanto" else "Sem conexão agora",
+                autoStart = if (AutoStart.supported) autoStart else null,
+                onOpen = {
+                    onDismiss()
+                    onOpen()
+                },
+                onToggleAutoStart = {
+                    AutoStart.setEnabled(!autoStart)
+                    autoStart = AutoStart.isEnabled()
+                },
+                onExit = {
+                    onDismiss()
+                    onExit()
+                },
+            )
+        }
+    }
+}
+
+/** Conteúdo do menu (separado da janela para poder ser desenhado e testado sozinho). */
+@Composable
+fun TrayMenuContent(subtitle: String, autoStart: Boolean?, onOpen: () -> Unit, onToggleAutoStart: () -> Unit, onExit: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)).background(colors.surfaceContainer)
+            .border(1.dp, colors.outlineVariant, RoundedCornerShape(14.dp)),
+    ) {
+        Column(Modifier.padding(6.dp)) {
+            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                ZentroLogo(34)
+                Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                    Text("Zentro", style = MaterialTheme.typography.titleSmall)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
+            HorizontalDivider(Modifier.padding(vertical = 4.dp), color = colors.outlineVariant)
+            MenuItem(Icons.Rounded.Home, "Abrir o Zentro", onClick = onOpen)
+            if (autoStart != null) {
+                MenuItem(if (autoStart) Icons.Rounded.Check else null, "Iniciar com o Windows", onClick = onToggleAutoStart)
+            }
+            HorizontalDivider(Modifier.padding(vertical = 4.dp), color = colors.outlineVariant)
+            MenuItem(Icons.AutoMirrored.Rounded.ExitToApp, "Fechar o Zentro", "Os avisos deste PC param até você abrir de novo", ZColors.Expense, onExit)
         }
     }
 }
