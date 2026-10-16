@@ -83,7 +83,9 @@ object Notes {
 
     /** Texto puro da primeira linha com conteúdo, para a lista de notas. */
     fun preview(content: String, max: Int = 120): String {
-        val line = textLines(content).map { it.value.trim() }.firstOrNull { it.isNotEmpty() && it != "---" } ?: return ""
+        val lines = textLines(content).map { it.value.trim() }.filter { it.isNotEmpty() && it != "---" }
+        // Prefere texto de verdade a títulos de seção ("## Objetivo").
+        val line = lines.firstOrNull { !it.startsWith("#") || tagRegex.matchesAt(it, 0) } ?: lines.firstOrNull() ?: return ""
         return plain(line).take(max)
     }
 
