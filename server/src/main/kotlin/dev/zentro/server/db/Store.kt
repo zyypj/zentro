@@ -145,7 +145,7 @@ class Store(file: File) {
             it[description] = stored.description
             it[category] = stored.category
             it[date] = stored.date
-            it[source] = stored.source.name
+            it[origin] = stored.source.name
             it[externalId] = stored.externalId
             it[updatedAt] = now
             it[deleted] = stored.deleted
@@ -163,7 +163,7 @@ class Store(file: File) {
             it[description] = tx.description
             it[category] = tx.category
             it[date] = tx.date
-            it[source] = tx.source.name
+            it[origin] = tx.source.name
             it[externalId] = tx.externalId
             it[updatedAt] = now
             it[deleted] = false
@@ -324,7 +324,7 @@ class Store(file: File) {
         description = this[Transactions.description],
         category = this[Transactions.category],
         date = this[Transactions.date],
-        source = runCatching { TxSource.valueOf(this[Transactions.source]) }.getOrDefault(TxSource.MANUAL),
+        source = runCatching { TxSource.valueOf(this[Transactions.origin]) }.getOrDefault(TxSource.MANUAL),
         externalId = this[Transactions.externalId],
         updatedAt = this[Transactions.updatedAt],
         deleted = this[Transactions.deleted],

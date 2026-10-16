@@ -37,7 +37,7 @@ object Transactions : Table("transactions") {
     val description = varchar("description", 300)
     val category = varchar("category", 60)
     val date = long("date").index()
-    val source = varchar("source", 20)
+    val origin = varchar("source", 20)
     val externalId = varchar("external_id", 100).nullable()
     val updatedAt = long("updated_at").index()
     val deleted = bool("deleted")
