@@ -5,6 +5,8 @@ import dev.zentro.shared.ApiRoutes
 import dev.zentro.shared.AuthRequest
 import dev.zentro.shared.AuthResponse
 import dev.zentro.shared.Event
+import dev.zentro.shared.Note
+import dev.zentro.shared.Person
 import dev.zentro.shared.Schedule
 import dev.zentro.shared.SettingsPatch
 import dev.zentro.shared.SyncResponse
@@ -130,5 +132,45 @@ class ApiTest {
             setBody(AuthRequest("outro@zentro.dev", "segredo123"))
         }
         assertEquals(HttpStatusCode.Forbidden, second.status)
+    }
+
+    @Test
+    fun peopleAndNotesSync() = testApplication {
+        val client = setup()
+        val auth = client.register()
+        client.put("${ApiRoutes.PEOPLE}/p1") {
+            bearerAuth(auth.token)
+            contentType(ContentType.Application.Json)
+            setBody(Person(id = "p1", name = "  Ana  "))
+        }
+        client.put("${ApiRoutes.EVENTS}/e1") {
+            bearerAuth(auth.token)
+            contentType(ContentType.Application.Json)
+            setBody(Event(id = "e1", title = "Prova de cálculo", startAt = Schedule.now(), personId = "p1"))
+        }
+        val note = client.put("${ApiRoutes.NOTES}/n1") {
+            bearerAuth(auth.token)
+            contentType(ContentType.Application.Json)
+            setBody(Note(id = "n1", title = "Reunião", content = "- [ ] enviar proposta #trabalho", folder = "/Trabalho/"))
+        }.body<Note>()
+        assertEquals("Trabalho", note.folder)
+        assertTrue(note.createdAt > 0)
+
+        val sync = client.get("${ApiRoutes.SYNC}?since=0") { bearerAuth(auth.token) }.body<SyncResponse>()
+        assertEquals("Ana", sync.people.single().name)
+        assertEquals("p1", sync.events.single().personId)
+        assertEquals("Reunião", sync.notes.single().title)
+
+        // Editar mantém a data de criação original.
+        val edited = client.put("${ApiRoutes.NOTES}/n1") {
+            bearerAuth(auth.token)
+            contentType(ContentType.Application.Json)
+            setBody(note.copy(content = "- [x] enviar proposta", createdAt = 0))
+        }.body<Note>()
+        assertEquals(note.createdAt, edited.createdAt)
+
+        client.delete("${ApiRoutes.NOTES}/n1") { bearerAuth(auth.token) }
+        val after = client.get("${ApiRoutes.SYNC}?since=${sync.serverTime}") { bearerAuth(auth.token) }.body<SyncResponse>()
+        assertTrue(after.notes.single().deleted)
     }
 }

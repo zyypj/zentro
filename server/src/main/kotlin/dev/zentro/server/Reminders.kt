@@ -45,11 +45,16 @@ class Reminders(private val store: Store, private val telegram: TelegramBot) {
                 val chatId = settings.telegramChatId ?: continue
                 val tz = Schedule.zone(settings.public.timezone)
 
-                for (trigger in Schedule.triggers(store.activeEvents(settings.userId), from, now, tz)) {
+                val events = store.activeEvents(settings.userId)
+                val eventsById = events.associateBy { it.id }
+                val people = store.activePeople(settings.userId).associate { it.id to it.name }
+                for (trigger in Schedule.triggers(events, from, now, tz)) {
                     if (!store.markSent("tg:${settings.userId}:${trigger.key}", now)) continue
                     val start = Schedule.toLocal(trigger.occurrenceStart, tz)
                     val late = now - trigger.triggerAt > 2 * 60_000
+                    val person = eventsById[trigger.eventId]?.personId?.let { people[it] }
                     val text = buildString {
+                        if (person != null) append("👤 <b>").append(TelegramBot.escape(person)).append("</b> · ")
                         append(if (trigger.critical) "🚨 <b>COMPROMISSO CRÍTICO</b>\n" else "⏰ ")
                         append("<b>").append(TelegramBot.escape(trigger.title)).append("</b>\n")
                         append(when (trigger.minutesBefore) {

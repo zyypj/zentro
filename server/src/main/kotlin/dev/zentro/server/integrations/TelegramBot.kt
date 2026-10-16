@@ -142,11 +142,13 @@ class TelegramBot(
         val tz = Schedule.zone(store.settings(userId).public.timezone)
         val date = Schedule.toLocal(Schedule.now() + plusDays * 86_400_000L, tz).date
         val items = Schedule.agendaFor(store.activeEvents(userId), date, tz)
+        val people = store.activePeople(userId).associate { it.id to it.name }
         val header = "📅 <b>${Format.longDate(date).replaceFirstChar { it.uppercase() }}</b>"
         if (items.isEmpty()) return "$header\nNada marcado. Aproveite!"
         return header + "\n" + items.joinToString("\n") { (event, start) ->
             val time = if (event.allDay) "dia todo" else Format.time(Schedule.toLocal(start, tz))
-            "${if (event.critical) "🚨" else "•"} <b>$time</b> ${escape(event.title)}"
+            val person = event.personId?.let { people[it] }?.let { " <i>(${escape(it)})</i>" }.orEmpty()
+            "${if (event.critical) "🚨" else "•"} <b>$time</b> ${escape(event.title)}$person"
         }
     }
 

@@ -1,6 +1,7 @@
 package dev.zentro.server
 
 import dev.zentro.server.db.Store
+import dev.zentro.server.integrations.GitHubReleases
 import dev.zentro.server.integrations.MercadoPago
 import dev.zentro.server.integrations.TelegramBot
 import dev.zentro.shared.ApiRoutes
@@ -8,6 +9,9 @@ import dev.zentro.shared.AuthRequest
 import dev.zentro.shared.AuthResponse
 import dev.zentro.shared.Event
 import dev.zentro.shared.MercadoPagoConnect
+import dev.zentro.shared.Note
+import dev.zentro.shared.Notes
+import dev.zentro.shared.Person
 import dev.zentro.shared.ReviewRequest
 import dev.zentro.shared.Schedule
 import dev.zentro.shared.ServerInfo
@@ -49,6 +53,7 @@ class AppContext(
     val hub: LiveHub,
     val telegram: TelegramBot,
     val mercadoPago: MercadoPago,
+    val releases: GitHubReleases,
     val scope: CoroutineScope,
 ) {
     /** Qualquer alteração na agenda conta como "agenda atualizada hoje". */
@@ -83,6 +88,23 @@ private fun Transaction.validated(pathId: String): Transaction {
     return copy(description = description.trim().take(300).ifEmpty { category }, category = category.trim().take(60))
 }
 
+private fun Person.validated(pathId: String): Person {
+    if (id != pathId) bad("Id do corpo diferente da URL")
+    val clean = name.trim()
+    if (clean.isEmpty()) bad("Informe o nome da pessoa")
+    return copy(name = clean.take(80))
+}
+
+private fun Note.validated(pathId: String): Note {
+    if (id != pathId) bad("Id do corpo diferente da URL")
+    if (content.length > 500_000) bad("Anotação grande demais")
+    return copy(
+        title = title.trim().take(300),
+        folder = folder.trim().trim('/').take(200).ifEmpty { Notes.DEFAULT_FOLDER },
+        icon = icon.take(16),
+    )
+}
+
 fun Route.apiRoutes(ctx: AppContext) {
     val store = ctx.store
 
@@ -104,6 +126,11 @@ fun Route.apiRoutes(ctx: AppContext) {
                 serverTime = Schedule.now(),
             ),
         )
+    }
+
+    get(ApiRoutes.UPDATE) {
+        val info = ctx.releases.latest() ?: throw ApiException(HttpStatusCode.ServiceUnavailable, "Não consegui consultar o GitHub agora")
+        call.respond(info)
     }
 
     post(ApiRoutes.REGISTER) {
@@ -151,8 +178,38 @@ fun Route.apiRoutes(ctx: AppContext) {
                     events = store.eventsSince(userId, since),
                     transactions = store.transactionsSince(userId, since),
                     settings = store.settings(userId).public,
+                    people = store.peopleSince(userId, since),
+                    notes = store.notesSince(userId, since),
                 ),
             )
+        }
+
+        put("${ApiRoutes.PEOPLE}/{id}") {
+            val userId = call.userId
+            val saved = store.upsertPerson(userId, call.receive<Person>().validated(call.pathId()), Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(saved)
+        }
+
+        delete("${ApiRoutes.PEOPLE}/{id}") {
+            val userId = call.userId
+            store.deletePerson(userId, call.pathId(), Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        put("${ApiRoutes.NOTES}/{id}") {
+            val userId = call.userId
+            val saved = store.upsertNote(userId, call.receive<Note>().validated(call.pathId()), Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(saved)
+        }
+
+        delete("${ApiRoutes.NOTES}/{id}") {
+            val userId = call.userId
+            store.deleteNote(userId, call.pathId(), Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(HttpStatusCode.NoContent)
         }
 
         put("${ApiRoutes.EVENTS}/{id}") {
