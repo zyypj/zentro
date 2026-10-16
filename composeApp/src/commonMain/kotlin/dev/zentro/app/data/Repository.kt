@@ -352,7 +352,11 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
     suspend fun mercadoPago(): Result<MercadoPagoStatus> = online { it.mercadoPago() }
     suspend fun mercadoPagoConnect(token: String): Result<MercadoPagoStatus> = online { it.mercadoPagoConnect(token) }.also { sync() }
     suspend fun mercadoPagoDisconnect(): Result<Unit> = online { it.mercadoPagoDisconnect() }.also { sync() }
-    suspend fun latestRelease(): Result<dev.zentro.shared.UpdateInfo> = online { it.latestRelease() }
+    /** Pergunta ao servidor (que pode apontar para outro repositório); se não der, vai direto ao GitHub. */
+    suspend fun latestRelease(): Result<dev.zentro.shared.UpdateInfo> {
+        online { it.latestRelease() }.getOrNull()?.let { return Result.success(it) }
+        return ApiClient.githubLatest()?.let { Result.success(it) } ?: Result.failure(ApiFailure("Sem conexão para verificar atualizações", network = true))
+    }
     suspend fun mercadoPagoSync(): Result<MercadoPagoStatus> = online { it.mercadoPagoSync() }.also { sync() }
 
     private companion object {

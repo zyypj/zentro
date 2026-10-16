@@ -4,7 +4,9 @@ import dev.zentro.shared.ApiError
 import dev.zentro.shared.ApiRoutes
 import dev.zentro.shared.AuthRequest
 import dev.zentro.shared.AuthResponse
+import dev.zentro.shared.BuildVersion
 import dev.zentro.shared.Event
+import dev.zentro.shared.GitHub
 import dev.zentro.shared.MercadoPagoConnect
 import dev.zentro.shared.MercadoPagoStatus
 import dev.zentro.shared.Note
@@ -27,6 +29,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.prepareGet
@@ -36,6 +39,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.contentLength
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
@@ -43,6 +47,7 @@ import io.ktor.utils.io.readAvailable
 import io.ktor.websocket.Frame
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 class ApiFailure(message: String, val status: Int? = null, val network: Boolean = false) : Exception(message)
 
@@ -164,6 +169,15 @@ class ApiClient(serverUrl: String, private val token: String?) {
             }
             expectSuccess = false
         }
+
+        /** Última release direto do GitHub — reserva para quando o servidor não está acessível. */
+        suspend fun githubLatest(repo: String = ApiRoutes.DEFAULT_REPO): UpdateInfo? = runCatching {
+            val response = http.get(GitHub.latestReleaseUrl(repo)) {
+                header(HttpHeaders.UserAgent, "Zentro/${BuildVersion.CURRENT}")
+                header(HttpHeaders.Accept, "application/vnd.github+json")
+            }
+            if (response.status.isSuccess()) GitHub.parseRelease(response.body<JsonObject>(), repo) else null
+        }.getOrNull()
 
         /** Baixa um arquivo grande (instalador) em pedaços, sem limite de tempo, informando o progresso. */
         suspend fun download(url: String, write: (ByteArray, Int) -> Unit, onProgress: (Float) -> Unit) {

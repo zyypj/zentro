@@ -9,7 +9,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -58,8 +57,7 @@ class UpdateManager(private val repo: Repository, private val installer: Install
         if (loop?.isActive == true) return
         loop = scope.launch {
             delay(4_000)
-            // Sem conta ainda (tela de login): espera entrar para verificar.
-            repo.data.first { it.session != null }
+            // Funciona até na tela de login: sem servidor, a consulta vai direto ao GitHub.
             check()?.let { if (canInstall && installer.autoInstallAllowed(it.version)) install(it) }
             while (isActive) {
                 delay(3 * 3_600_000L)
