@@ -68,16 +68,27 @@ if (androidEnabled) {
             applicationId = "dev.zentro.app"
             minSdk = libs.versions.android.minSdk.get().toInt()
             targetSdk = libs.versions.android.targetSdk.get().toInt()
-            versionCode = 1
+            // 1.1.0 -> 10100: cresce a cada versão, como o Android exige para atualizar.
+            versionCode = libs.versions.zentro.get().split(".").map { it.toInt() }.let { (a, b, c) -> a * 10_000 + b * 100 + c }
             versionName = libs.versions.zentro.get()
+        }
+        // Assinatura fixa (vinda dos segredos do GitHub) para que cada versão nova instale por cima da anterior.
+        val keystore = System.getenv("ZENTRO_KEYSTORE")?.takeIf { it.isNotBlank() && file(it).exists() }
+        if (keystore != null) {
+            signingConfigs.create("release") {
+                storeFile = file(keystore)
+                storePassword = System.getenv("ZENTRO_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ZENTRO_KEY_ALIAS")
+                keyPassword = System.getenv("ZENTRO_KEY_PASSWORD")
+            }
         }
         buildTypes {
             getByName("release") {
                 isMinifyEnabled = true
                 isShrinkResources = true
                 proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-                // Assina com a chave de debug para gerar um APK instalável direto; troque por uma chave própria para publicar na Play Store.
-                signingConfig = signingConfigs.getByName("debug")
+                // Sem a chave oficial (ex.: build local), assina com a de debug só para gerar um APK instalável.
+                signingConfig = signingConfigs.getByName(if (keystore != null) "release" else "debug")
             }
         }
         compileOptions {

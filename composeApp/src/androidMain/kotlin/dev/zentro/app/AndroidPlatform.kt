@@ -27,6 +27,7 @@ import kotlinx.coroutines.delay
 
 class AndroidPlatform(private val activity: MainActivity) : Platform {
     override val name: String = "Android ${Build.VERSION.RELEASE}"
+    override val updates = activity.zentro.updates
 
     private fun open(intent: Intent) {
         runCatching { activity.startActivity(intent) }.onFailure {

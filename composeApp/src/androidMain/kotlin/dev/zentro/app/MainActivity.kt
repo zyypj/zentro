@@ -30,6 +30,8 @@ class MainActivity : ComponentActivity() {
         }
         val platform = AndroidPlatform(this)
         setContent { App(zentro.repo, platform) }
+        // Ao abrir: se houver versão nova, já baixa e abre o instalador. Com o app aberto, só avisa.
+        zentro.updates.start()
     }
 
     override fun onStart() {

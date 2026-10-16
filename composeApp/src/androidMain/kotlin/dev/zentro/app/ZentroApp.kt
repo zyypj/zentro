@@ -6,6 +6,7 @@ import dev.zentro.app.alarm.AlarmScheduler
 import dev.zentro.app.alarm.Notifications
 import dev.zentro.app.data.FileStorage
 import dev.zentro.app.data.Repository
+import dev.zentro.app.data.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,6 +30,7 @@ class ZentroApp : Application() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     lateinit var repo: Repository
         private set
+    val updates: UpdateManager by lazy { UpdateManager(repo, AndroidInstaller(this), scope) }
 
     override fun onCreate() {
         super.onCreate()
