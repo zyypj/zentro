@@ -1,0 +1,273 @@
+package dev.zentro.server
+
+import dev.zentro.server.db.Store
+import dev.zentro.server.integrations.MercadoPago
+import dev.zentro.server.integrations.TelegramBot
+import dev.zentro.shared.ApiRoutes
+import dev.zentro.shared.AuthRequest
+import dev.zentro.shared.AuthResponse
+import dev.zentro.shared.Event
+import dev.zentro.shared.MercadoPagoConnect
+import dev.zentro.shared.ReviewRequest
+import dev.zentro.shared.Schedule
+import dev.zentro.shared.ServerInfo
+import dev.zentro.shared.SettingsPatch
+import dev.zentro.shared.SyncResponse
+import dev.zentro.shared.TelegramLink
+import dev.zentro.shared.Transaction
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.auth.authenticate
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
+import io.ktor.server.routing.get
+import io.ktor.server.routing.patch
+import io.ktor.server.routing.post
+import io.ktor.server.routing.put
+import io.ktor.server.websocket.webSocket
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+
+class ApiException(val status: HttpStatusCode, override val message: String) : RuntimeException(message)
+
+private fun bad(message: String): Nothing = throw ApiException(HttpStatusCode.BadRequest, message)
+
+/** Tudo que as rotas precisam, num lugar só. */
+class AppContext(
+    val config: Config,
+    val store: Store,
+    val auth: Auth,
+    val hub: LiveHub,
+    val telegram: TelegramBot,
+    val mercadoPago: MercadoPago,
+    val scope: CoroutineScope,
+) {
+    /** Qualquer alteração na agenda conta como "agenda atualizada hoje". */
+    suspend fun touchAgenda(userId: Long, now: Long) {
+        val tz = Schedule.zone(store.settings(userId).public.timezone)
+        store.markReviewed(userId, Schedule.today(tz, now).toString(), now)
+    }
+}
+
+private val idPattern = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+private fun ApplicationCall.pathId(): String =
+    parameters["id"]?.takeIf { idPattern.matches(it) } ?: bad("Id inválido")
+
+private fun Event.validated(pathId: String): Event {
+    if (id != pathId) bad("Id do corpo diferente da URL")
+    val cleanTitle = title.trim()
+    if (cleanTitle.isEmpty()) bad("Dê um nome ao compromisso")
+    if (cleanTitle.length > 300) bad("Nome muito longo")
+    if ((endAt ?: startAt) < startAt) bad("O fim não pode ser antes do início")
+    return copy(
+        title = cleanTitle,
+        notes = notes.take(5000),
+        reminders = reminders.filter { it in 0..43_200 }.distinct().sortedDescending().take(10),
+    )
+}
+
+private fun Transaction.validated(pathId: String): Transaction {
+    if (id != pathId) bad("Id do corpo diferente da URL")
+    if (amountCents <= 0) bad("Informe um valor maior que zero")
+    if (amountCents > 100_000_000_000L) bad("Valor alto demais")
+    return copy(description = description.trim().take(300).ifEmpty { category }, category = category.trim().take(60))
+}
+
+fun Route.apiRoutes(ctx: AppContext) {
+    val store = ctx.store
+
+    get("/") {
+        call.respondText(
+            "<html><body style=\"font-family:sans-serif;background:#0f1115;color:#e8e8ea;display:grid;place-items:center;height:100vh;margin:0\">" +
+                "<div style=\"text-align:center\"><h1>Zentro</h1><p>Servidor online · v${BuildInfo.VERSION}</p></div></body></html>",
+            ContentType.Text.Html,
+        )
+    }
+
+    get(ApiRoutes.INFO) {
+        call.respond(
+            ServerInfo(
+                name = "Zentro",
+                version = BuildInfo.VERSION,
+                registrationOpen = ctx.config.allowRegistration || store.userCount() == 0L,
+                telegramEnabled = ctx.telegram.enabled,
+                serverTime = Schedule.now(),
+            ),
+        )
+    }
+
+    post(ApiRoutes.REGISTER) {
+        val req = call.receive<AuthRequest>()
+        if (!ctx.config.allowRegistration && store.userCount() > 0) {
+            throw ApiException(HttpStatusCode.Forbidden, "Novos cadastros estão desativados neste servidor")
+        }
+        val email = req.email.trim().lowercase()
+        val name = req.name?.trim().orEmpty().ifEmpty { email.substringBefore('@') }
+        if (!email.matches(Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"))) bad("E-mail inválido")
+        if (req.password.length < 6) bad("A senha precisa ter pelo menos 6 caracteres")
+        if (store.userByEmail(email) != null) throw ApiException(HttpStatusCode.Conflict, "Este e-mail já tem conta. Faça login.")
+        val user = store.createUser(name.take(100), email, ctx.auth.hash(req.password), Schedule.now())
+        call.respond(AuthResponse(ctx.auth.issue(user.id), user.toDto()))
+    }
+
+    post(ApiRoutes.LOGIN) {
+        val req = call.receive<AuthRequest>()
+        val user = store.userByEmail(req.email.trim().lowercase())
+        if (user == null || !ctx.auth.matches(req.password, user.passwordHash)) {
+            delay(600) // freia tentativas de força bruta
+            throw ApiException(HttpStatusCode.Unauthorized, "E-mail ou senha incorretos")
+        }
+        call.respond(AuthResponse(ctx.auth.issue(user.id), user.toDto()))
+    }
+
+    post("/api/webhooks/mercadopago/{key}") {
+        // O webhook só dispara uma sincronização: os dados vêm sempre da API oficial,
+        // então uma notificação forjada não consegue inserir nada.
+        val settings = call.parameters["key"]?.let { store.settingsByWebhookKey(it) }
+        if (settings != null && settings.mpAccessToken != null) {
+            ctx.scope.launch { ctx.mercadoPago.sync(settings.userId) }
+        }
+        call.respond(HttpStatusCode.OK)
+    }
+
+    authenticate("jwt") {
+        get(ApiRoutes.SYNC) {
+            val userId = call.userId
+            val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0L
+            val serverTime = Schedule.now()
+            call.respond(
+                SyncResponse(
+                    serverTime = serverTime,
+                    events = store.eventsSince(userId, since),
+                    transactions = store.transactionsSince(userId, since),
+                    settings = store.settings(userId).public,
+                ),
+            )
+        }
+
+        put("${ApiRoutes.EVENTS}/{id}") {
+            val userId = call.userId
+            val event = call.receive<Event>().validated(call.pathId())
+            val now = Schedule.now()
+            val saved = store.upsertEvent(userId, event, now)
+            ctx.touchAgenda(userId, now)
+            ctx.hub.notify(userId)
+            call.respond(saved)
+        }
+
+        delete("${ApiRoutes.EVENTS}/{id}") {
+            val userId = call.userId
+            val now = Schedule.now()
+            store.deleteEvent(userId, call.pathId(), now)
+            ctx.touchAgenda(userId, now)
+            ctx.hub.notify(userId)
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        put("${ApiRoutes.TRANSACTIONS}/{id}") {
+            val userId = call.userId
+            val tx = call.receive<Transaction>().validated(call.pathId())
+            val saved = store.upsertTransaction(userId, tx, Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(saved)
+        }
+
+        delete("${ApiRoutes.TRANSACTIONS}/{id}") {
+            val userId = call.userId
+            store.deleteTransaction(userId, call.pathId(), Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        patch(ApiRoutes.SETTINGS) {
+            val userId = call.userId
+            val patch = call.receive<SettingsPatch>()
+            patch.timezone?.let { runCatching { TimeZone.of(it) }.getOrElse { bad("Fuso horário inválido") } }
+            val times = patch.reviewTimes?.map { it.trim() }?.distinct()?.sorted()
+            if (times != null) {
+                if (times.size > 6) bad("Use no máximo 6 horários")
+                if (times.any { Schedule.parseTime(it) == null }) bad("Horário inválido, use HH:mm")
+            }
+            val saved = store.updateSettings(userId, Schedule.now(), patch.timezone, times)
+            ctx.hub.notify(userId)
+            call.respond(saved.public)
+        }
+
+        post(ApiRoutes.REVIEW) {
+            val userId = call.userId
+            val date = call.receive<ReviewRequest>().date
+            runCatching { LocalDate.parse(date) }.getOrElse { bad("Data inválida") }
+            val saved = store.markReviewed(userId, date, Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(saved.public)
+        }
+
+        get(ApiRoutes.TELEGRAM_LINK) {
+            val userId = call.userId
+            if (!ctx.telegram.enabled) return@get call.respond(TelegramLink(enabled = false, linked = false))
+            val settings = store.settings(userId)
+            if (settings.telegramChatId != null) return@get call.respond(TelegramLink(enabled = true, linked = true))
+            val code = Store.randomKey(20)
+            store.setTelegramLinkCode(userId, code)
+            call.respond(TelegramLink(enabled = true, linked = false, url = ctx.telegram.deepLink(code)))
+        }
+
+        delete(ApiRoutes.TELEGRAM_LINK) {
+            val userId = call.userId
+            store.unlinkTelegram(userId, Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        post(ApiRoutes.TELEGRAM_TEST) {
+            val chatId = store.settings(call.userId).telegramChatId ?: bad("Telegram ainda não conectado")
+            val ok = ctx.telegram.send(chatId, "✅ <b>Tudo certo!</b>\nO Zentro vai te avisar por aqui também.")
+            if (!ok) throw ApiException(HttpStatusCode.BadGateway, "Não consegui falar com o Telegram agora")
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        get(ApiRoutes.MERCADO_PAGO) {
+            call.respond(ctx.mercadoPago.status(call.userId))
+        }
+
+        post(ApiRoutes.MERCADO_PAGO) {
+            val userId = call.userId
+            val token = call.receive<MercadoPagoConnect>().accessToken.trim()
+            if (token.length < 20) bad("Cole o Access Token completo (começa com APP_USR-)")
+            call.respond(ctx.mercadoPago.connect(userId, token))
+        }
+
+        delete(ApiRoutes.MERCADO_PAGO) {
+            val userId = call.userId
+            store.setMercadoPago(userId, null, null, Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        post(ApiRoutes.MERCADO_PAGO_SYNC) {
+            call.respond(ctx.mercadoPago.sync(call.userId))
+        }
+
+        webSocket(ApiRoutes.LIVE) {
+            val userId = call.userId
+            ctx.hub.join(userId, this)
+            try {
+                for (frame in incoming) {
+                    if (frame is Frame.Text && frame.readText() == "ping") send(Frame.Text("pong"))
+                }
+            } finally {
+                ctx.hub.leave(userId, this)
+            }
+        }
+    }
+}

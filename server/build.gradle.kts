@@ -45,6 +45,9 @@ tasks.shadowJar {
     archiveClassifier.set("")
     archiveVersion.set("")
     mergeServiceFiles()
+    manifest {
+        attributes("Implementation-Version" to project.version, "Main-Class" to "dev.zentro.server.MainKt")
+    }
 }
 
 tasks.test {
