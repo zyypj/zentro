@@ -20,7 +20,24 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v5
 
+      # Chave fixa de assinatura (segredos do repositório): sem ela o Android recusa instalar
+      # uma versão nova por cima da antiga, e a atualização automática do APK não funciona.
+      - name: Preparar assinatura do APK
+        env:
+          KEYSTORE_B64: ${{ secrets.ZENTRO_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/zentro.jks"
+            echo "ZENTRO_KEYSTORE=$RUNNER_TEMP/zentro.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Sem ZENTRO_KEYSTORE_B64: o APK sai com chave de debug e não atualiza por cima de versões anteriores."
+          fi
+
       - run: ./gradlew :shared:jvmTest :server:test :server:shadowJar :composeApp:assembleRelease
+        env:
+          ZENTRO_KEYSTORE_PASSWORD: ${{ secrets.ZENTRO_KEYSTORE_PASSWORD }}
+          ZENTRO_KEY_ALIAS: ${{ secrets.ZENTRO_KEY_ALIAS }}
+          ZENTRO_KEY_PASSWORD: ${{ secrets.ZENTRO_KEY_PASSWORD }}
 
       - name: Organizar arquivos
         run: |
