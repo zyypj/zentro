@@ -2,6 +2,12 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.1.1] - 2026-10-16
+
+### Correções
+- **Android:** o app não conectava a servidores acessados por `IP:porta` em HTTP (o Android 9+ bloqueia HTTP sem criptografia por padrão). Agora conecta.
+- **Atualizações:** se o servidor não estiver acessível, os apps consultam as releases direto no GitHub, então uma falha de conexão não impede mais uma correção de chegar.
+
 ## [1.1.0] - 2026-10-16
 
 ### Novidades
