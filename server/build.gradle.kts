@@ -10,7 +10,8 @@ kotlin {
 }
 
 application {
-    mainClass.set("dev.zentro.server.MainKt")
+    // O Launcher supervisiona o servidor (atualização automática e reinício); fora de um jar ele roda o servidor direto.
+    mainClass.set("dev.zentro.server.Launcher")
 }
 
 dependencies {
@@ -46,7 +47,7 @@ tasks.shadowJar {
     archiveVersion.set("")
     mergeServiceFiles()
     manifest {
-        attributes("Implementation-Version" to project.version, "Main-Class" to "dev.zentro.server.MainKt")
+        attributes("Implementation-Version" to project.version)
     }
 }
 

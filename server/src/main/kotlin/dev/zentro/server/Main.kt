@@ -3,7 +3,9 @@ package dev.zentro.server
 import dev.zentro.server.db.Store
 import dev.zentro.server.integrations.MercadoPago
 import dev.zentro.server.integrations.TelegramBot
+import dev.zentro.server.integrations.GitHubReleases
 import dev.zentro.shared.ApiError
+import dev.zentro.shared.BuildVersion
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO as ClientCIO
 import io.ktor.client.plugins.HttpTimeout
@@ -35,7 +37,16 @@ import kotlin.system.exitProcess
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
 
 object BuildInfo {
-    val VERSION: String = BuildInfo::class.java.`package`?.implementationVersion ?: "dev"
+    const val VERSION: String = BuildVersion.CURRENT
+}
+
+/** Permite que partes do servidor peçam para desligar com um código de saída (ex.: atualização). */
+object ServerControl {
+    @Volatile var stop: ((Int) -> Unit)? = null
+
+    fun exit(code: Int) {
+        thread(name = "zentro-exit") { stop?.invoke(code) ?: exitProcess(code) }
+    }
 }
 
 val ZentroJson = Json {
@@ -49,6 +60,10 @@ private val log = LoggerFactory.getLogger("dev.zentro.server")
 fun main() {
     val config = Config.fromEnv()
     val server = embeddedServer(CIO, port = config.port, host = "0.0.0.0") { zentro(config) }
+    ServerControl.stop = { code ->
+        server.stop(1_000, 5_000)
+        exitProcess(code)
+    }
 
     // O Pterodactyl envia o comando de parada pelo console (stdin).
     thread(isDaemon = true, name = "console") {
@@ -58,8 +73,7 @@ fun main() {
             when (line.trim().lowercase()) {
                 "stop", "end", "exit", "quit" -> {
                     log.info("Desligando...")
-                    server.stop(1_000, 5_000)
-                    exitProcess(0)
+                    ServerControl.exit(0)
                 }
                 "status" -> log.info("Online · versão ${BuildInfo.VERSION} · porta ${config.port}")
                 "" -> Unit
@@ -85,7 +99,8 @@ fun Application.zentro(config: Config, store: Store = Store(File(config.dataDir,
     val auth = Auth(config.jwtSecret)
     val telegram = TelegramBot(config.telegramToken, http, store, onLinked = { hub.notify(it) })
     val mercadoPago = MercadoPago(http, store, onChanged = { hub.notify(it) })
-    val ctx = AppContext(config, store, auth, hub, telegram, mercadoPago, scope)
+    val releases = GitHubReleases(http, config.githubRepo)
+    val ctx = AppContext(config, store, auth, hub, telegram, mercadoPago, releases, scope)
 
     install(ContentNegotiation) { json(ZentroJson) }
     install(WebSockets) {
@@ -117,6 +132,7 @@ fun Application.zentro(config: Config, store: Store = Store(File(config.dataDir,
         telegram.start(scope)
         mercadoPago.start(scope)
         Reminders(store, telegram).start(scope)
+        SelfUpdater(config, releases, http, restart = { ServerControl.exit(EXIT_UPDATE) }).start(scope)
         // Esta linha é usada pelo egg do Pterodactyl para saber que o servidor terminou de iniciar.
         log.info("Zentro server started on port ${config.port} (v${BuildInfo.VERSION})")
     }
