@@ -1,6 +1,7 @@
 package dev.zentro.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -160,6 +161,8 @@ fun main(args: Array<String>) {
             state = windowState,
         ) {
             LaunchedEffect(Unit) { window.minimumSize = Dimension(420, 640) }
+            val dark = isSystemInDarkTheme()
+            LaunchedEffect(dark, visible) { TitleBar.apply(window, dark) }
             LaunchedEffect(visible) {
                 if (visible) {
                     if (windowState.placement == WindowPlacement.Floating) window.toFront()
@@ -240,7 +243,9 @@ private fun ApplicationScope.CriticalAlerts(notifier: DesktopNotifier, alarm: So
         state = rememberWindowState(position = WindowPosition(Alignment.Center), size = DpSize(520.dp, 340.dp)),
         icon = remember { ZentroIcon() },
     ) {
+        val dark = isSystemInDarkTheme()
         LaunchedEffect(trigger.key) {
+            TitleBar.apply(window, dark)
             window.toFront()
             window.requestFocus()
         }
