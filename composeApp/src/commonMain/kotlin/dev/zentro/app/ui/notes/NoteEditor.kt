@@ -1,0 +1,411 @@
+package dev.zentro.app.ui.notes
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.zentro.app.ui.LocalWide
+import dev.zentro.app.ui.ZColors
+import dev.zentro.app.ui.ZIcons
+import dev.zentro.shared.Note
+import dev.zentro.shared.Notes
+import kotlinx.coroutines.delay
+
+private val emojis = listOf("📝", "💼", "🎓", "🚀", "💡", "📚", "🧠", "✅", "📅", "🤝", "💰", "❤️", "🏋️", "🎯", "🔧", "🎨", "🧪", "📌", "⭐", "🔥", "🌱", "✈️", "🏠", "🎵")
+
+/**
+ * Editor de uma nota. Abre já em visualização (Markdown renderizado) quando a nota tem conteúdo;
+ * toque em editar para mudar. Salva sozinho enquanto você escreve.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NoteEditor(
+    note: Note,
+    allNotes: List<Note>,
+    onSave: (Note) -> Unit,
+    onDelete: (String) -> Unit,
+    onOpenLink: (String) -> Unit,
+    onOpenNote: (Note) -> Unit,
+    onTag: (String) -> Unit,
+    onBack: (() -> Unit)?,
+) {
+    var title by remember(note.id) { mutableStateOf(note.title) }
+    var content by remember(note.id) { mutableStateOf(TextFieldValue(note.content)) }
+    var folder by remember(note.id) { mutableStateOf(note.folder) }
+    var icon by remember(note.id) { mutableStateOf(note.icon) }
+    var pinned by remember(note.id) { mutableStateOf(note.pinned) }
+    var editing by remember(note.id) { mutableStateOf(note.content.isBlank()) }
+    var pickingFolder by remember { mutableStateOf(false) }
+    var pickingIcon by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    val current = note.copy(title = title.trim(), content = content.text, folder = folder, icon = icon, pinned = pinned)
+    val latest by rememberUpdatedState(current)
+    var saved by remember(note.id) { mutableStateOf(note) }
+
+    fun saveIfChanged() {
+        val n = latest
+        if (n.title != saved.title || n.content != saved.content || n.folder != saved.folder || n.icon != saved.icon || n.pinned != saved.pinned) {
+            saved = n
+            onSave(n)
+        }
+    }
+
+    // Salvamento automático: 600 ms depois de parar de digitar, e ao sair da nota.
+    LaunchedEffect(current) {
+        delay(600)
+        saveIfChanged()
+    }
+    DisposableEffect(note.id) { onDispose { saveIfChanged() } }
+
+    val existingTitles = remember(allNotes) { allNotes.map { it.title.trim().lowercase() }.toSet() }
+    val backlinks = remember(allNotes, note.id, title) { Notes.backlinks(allNotes, current) }
+    val tags = remember(content.text) { Notes.tags(content.text).sorted() }
+    val pendingLink = if (editing) Notes.pendingLink(content.text.take(content.selection.start)) else null
+    val suggestions = remember(pendingLink, allNotes) {
+        pendingLink?.let { Notes.linkSuggestions(allNotes, it, excludeId = note.id) }.orEmpty()
+    }
+
+    fun completeLink(target: String) {
+        val cursor = content.selection.start
+        val before = content.text.take(cursor)
+        val start = before.lastIndexOf("[[")
+        val after = content.text.drop(cursor).let { if (it.startsWith("]]")) it.drop(2) else it }
+        val newText = before.take(start) + "[[" + target + "]]" + after
+        content = TextFieldValue(newText, TextRange(start + target.length + 4))
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        // ---------- barra superior ----------
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (onBack != null) {
+                IconButton(onClick = {
+                    saveIfChanged()
+                    onBack()
+                }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Voltar") }
+            }
+            Text(
+                "📁 ${folder.ifEmpty { Notes.DEFAULT_FOLDER }}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clip(MaterialTheme.shapes.small).clickable { pickingFolder = true }.padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { pinned = !pinned }) {
+                Icon(Icons.Rounded.Star, if (pinned) "Desafixar" else "Fixar", tint = if (pinned) ZColors.Warning else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            FilledTonalIconButton(onClick = { editing = !editing }) {
+                Icon(if (editing) ZIcons.Eye else Icons.Rounded.Edit, if (editing) "Visualizar" else "Editar")
+            }
+            IconButton(onClick = { confirmDelete = true }) {
+                Icon(Icons.Rounded.Delete, "Excluir", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).imePadding()
+                .padding(horizontal = if (LocalWide.current) 40.dp else 20.dp),
+        ) {
+            Box(Modifier.widthIn(max = 820.dp)) {
+                Column {
+                    // ---------- ícone e título ----------
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                        Text(
+                            icon.ifEmpty { "📝" },
+                            fontSize = 30.sp,
+                            modifier = Modifier.clip(MaterialTheme.shapes.small).clickable { pickingIcon = true }.padding(4.dp),
+                        )
+                        BasicTextField(
+                            value = title,
+                            onValueChange = { title = it.replace("\n", "") },
+                            textStyle = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                            modifier = Modifier.weight(1f).padding(start = 8.dp),
+                            decorationBox = { inner ->
+                                if (title.isEmpty()) {
+                                    Text("Sem título", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                                }
+                                inner()
+                            },
+                        )
+                    }
+
+                    if (tags.isNotEmpty()) {
+                        Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            tags.forEach { tag -> TagPill(tag) { onTag(tag) } }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+
+                    // ---------- conteúdo ----------
+                    if (editing) {
+                        MarkdownToolbar(content) { content = it }
+                        if (pendingLink != null) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                suggestions.forEach { s -> SuggestionChip(onClick = { completeLink(s.title) }, label = { Text("${s.icon.ifEmpty { "📝" }} ${s.title}") }) }
+                                if (pendingLink.isNotBlank() && suggestions.none { it.title.equals(pendingLink.trim(), ignoreCase = true) }) {
+                                    SuggestionChip(onClick = { completeLink(pendingLink.trim()) }, label = { Text("+ Criar \"${pendingLink.trim()}\"") })
+                                }
+                            }
+                        }
+                        BasicTextField(
+                            value = content,
+                            onValueChange = { content = it },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, lineHeight = 26.sp),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 320.dp).padding(top = 8.dp),
+                            decorationBox = { inner ->
+                                if (content.text.isEmpty()) {
+                                    Text(
+                                        "Escreva aqui. Use # para títulos, - [ ] para tarefas, [[ para ligar a outra nota e #tag para organizar.",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                    } else {
+                        if (content.text.isBlank()) {
+                            Text(
+                                "Nota vazia. Toque no lápis para escrever.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.clickable { editing = true }.padding(vertical = 12.dp),
+                            )
+                        }
+                        MarkdownView(
+                            content = content.text,
+                            existingTitles = existingTitles,
+                            onToggleTask = { line -> content = TextFieldValue(Notes.toggleTask(content.text, line)) },
+                            onOpenLink = { saveIfChanged(); onOpenLink(it) },
+                            onTag = onTag,
+                        )
+                    }
+
+                    // ---------- notas que citam esta ----------
+                    if (backlinks.isNotEmpty()) {
+                        HorizontalDivider(Modifier.padding(top = 28.dp, bottom = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        Text(
+                            "MENCIONADA EM ${backlinks.size} NOTA(S)",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        backlinks.forEach { other ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                shape = MaterialTheme.shapes.medium,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(MaterialTheme.shapes.medium).clickable {
+                                    saveIfChanged()
+                                    onOpenNote(other)
+                                },
+                            ) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text("${other.icon.ifEmpty { "📝" }} ${other.title.ifEmpty { "Sem título" }}", style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        Notes.preview(other.content),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(80.dp))
+                }
+            }
+        }
+    }
+
+    if (pickingFolder) {
+        FolderPicker(
+            folders = Notes.folders(allNotes),
+            current = folder,
+            onPick = { folder = it },
+            onDismiss = { pickingFolder = false },
+        )
+    }
+    if (pickingIcon) {
+        AlertDialog(
+            onDismissRequest = { pickingIcon = false },
+            title = { Text("Ícone da nota") },
+            text = {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    emojis.forEach { e ->
+                        Text(e, fontSize = 26.sp, modifier = Modifier.clip(MaterialTheme.shapes.small).clickable {
+                            icon = e
+                            pickingIcon = false
+                        }.padding(6.dp))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { pickingIcon = false }) { Text("Fechar") } },
+        )
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Excluir esta nota?") },
+            text = { Text("\"${title.ifEmpty { "Sem título" }}\" será apagada de todos os aparelhos.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    saved = latest // evita salvar de novo ao sair
+                    onDelete(note.id)
+                }) { Text("Excluir") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
+        )
+    }
+}
+
+@Composable
+fun TagPill(tag: String, onClick: () -> Unit) {
+    Text(
+        "#$tag",
+        style = MaterialTheme.typography.labelMedium,
+        color = ZColors.Income,
+        modifier = Modifier.clip(MaterialTheme.shapes.small).background(ZColors.Income.copy(alpha = 0.12f)).clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
+}
+
+/** Escolhe uma pasta existente ou cria uma nova (subpastas com "/", ex.: Faculdade/Cálculo). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun FolderPicker(folders: List<String>, current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    var newFolder by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Mover para pasta") },
+        text = {
+            Column {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    (listOf(Notes.DEFAULT_FOLDER) + folders).distinct().forEach { f ->
+                        AssistChip(
+                            onClick = {
+                                onPick(f)
+                                onDismiss()
+                            },
+                            label = { Text(if (f == current) "✓ $f" else f) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = newFolder,
+                    onValueChange = { newFolder = it },
+                    label = { Text("Nova pasta (ex.: Faculdade/Cálculo)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = newFolder.isNotBlank(), onClick = {
+                onPick(newFolder.trim().trim('/'))
+                onDismiss()
+            }) { Text("Criar e mover") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+/** Botões que inserem a sintaxe do Markdown para quem não quer decorar nada. */
+@Composable
+private fun MarkdownToolbar(value: TextFieldValue, onChange: (TextFieldValue) -> Unit) {
+    fun wrap(prefix: String, suffix: String = prefix) {
+        val sel = value.selection
+        val selected = value.text.substring(sel.min, sel.max)
+        val text = value.text.replaceRange(sel.min, sel.max, prefix + selected + suffix)
+        val cursor = if (selected.isEmpty()) sel.min + prefix.length else sel.min + prefix.length + selected.length + suffix.length
+        onChange(TextFieldValue(text, TextRange(cursor)))
+    }
+
+    fun linePrefix(prefix: String) {
+        val start = value.text.lastIndexOf('\n', (value.selection.min - 1).coerceAtLeast(0)).let { if (value.selection.min == 0) 0 else it + 1 }
+        val text = value.text.substring(0, start) + prefix + value.text.substring(start)
+        onChange(TextFieldValue(text, TextRange(value.selection.min + prefix.length)))
+    }
+
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        ToolButton("H1") { linePrefix("# ") }
+        ToolButton("H2") { linePrefix("## ") }
+        ToolButton("B") { wrap("**") }
+        ToolButton("I") { wrap("*") }
+        ToolButton("•") { linePrefix("- ") }
+        ToolButton("☐") { linePrefix("- [ ] ") }
+        ToolButton("[[ ]]") { wrap("[[", "]]") }
+        ToolButton("#") { wrap("#", "") }
+        ToolButton("❝") { linePrefix("> ") }
+        ToolButton("</>") { wrap("`") }
+        ToolButton("—") { wrap("\n---\n", "") }
+    }
+}
+
+@Composable
+private fun ToolButton(label: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.size(width = 48.dp, height = 40.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    }
+}
