@@ -92,13 +92,18 @@ class DesktopNotifier(
     fun show(trigger: ReminderTrigger, late: Boolean = false) {
         val tz = repo.timeZone
         val start = Schedule.toLocal(trigger.occurrenceStart, tz)
-        val whenText = if (trigger.minutesBefore == 0) "Agora · ${Format.time(start)}"
-        else "Às ${Format.time(start)} (${Schedule.describeOffset(trigger.minutesBefore)})"
+        val amount = trigger.amountCents
+        val whenText = when {
+            amount != null && trigger.minutesBefore == 0 -> "${Format.money(amount)} · vence hoje"
+            amount != null -> "${Format.money(amount)} · vence ${Schedule.describeOffset(trigger.minutesBefore).replace(" antes", "")}"
+            trigger.minutesBefore == 0 -> "Agora · ${Format.time(start)}"
+            else -> "Às ${Format.time(start)} (${Schedule.describeOffset(trigger.minutesBefore)})"
+        }
         val message = whenText + if (late) " · aviso atrasado" else ""
         if (trigger.critical) {
             _critical.update { list -> if (list.any { it.key == trigger.key }) list else list + trigger }
         }
-        notify(trigger.title, message, trigger.critical, trigger)
+        notify(if (amount != null) "💸 ${trigger.title}" else trigger.title, message, trigger.critical, trigger)
     }
 
     private fun notify(title: String, message: String, critical: Boolean, trigger: ReminderTrigger?) {

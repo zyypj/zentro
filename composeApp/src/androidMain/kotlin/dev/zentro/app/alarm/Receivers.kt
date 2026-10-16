@@ -25,7 +25,9 @@ class AlarmReceiver : BroadcastReceiver() {
                 val key = intent.getStringExtra(AlarmScheduler.EXTRA_KEY)
                 val eventId = intent.getStringExtra(AlarmScheduler.EXTRA_EVENT)
                 // Usa o título atual (pode ter sido editado); se o compromisso foi apagado, não avisa.
-                val event = data.events[eventId]
+                val occurrence = intent.getLongExtra(AlarmScheduler.EXTRA_START, 0)
+                // Conta já paga neste mês: não avisa (o alarme pode ter sido agendado antes do pagamento).
+                val event = data.events[eventId]?.takeIf { occurrence !in it.paid }
                 val isTest = eventId == "test"
                 if (key != null && (event != null || isTest) && FiredStore.markFired(context, key)) {
                     val title = event?.title ?: intent.getStringExtra(AlarmScheduler.EXTRA_TITLE).orEmpty()

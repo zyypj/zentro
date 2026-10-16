@@ -30,6 +30,7 @@ object AlarmScheduler {
     const val EXTRA_START = "start"
     const val EXTRA_BEFORE = "before"
     const val EXTRA_CRITICAL = "critical"
+    const val EXTRA_AMOUNT = "amount"
 
     const val TYPE_REMINDER = "reminder"
     const val TYPE_REVIEW = "review"
@@ -112,6 +113,7 @@ object AlarmScheduler {
         .putExtra(EXTRA_START, t.occurrenceStart)
         .putExtra(EXTRA_BEFORE, t.minutesBefore)
         .putExtra(EXTRA_CRITICAL, t.critical)
+        .putExtra(EXTRA_AMOUNT, t.amountCents ?: -1L)
 
     private fun setAlarmClock(context: Context, am: AlarmManager, at: Long, pi: PendingIntent) {
         if (canScheduleExact(context)) {

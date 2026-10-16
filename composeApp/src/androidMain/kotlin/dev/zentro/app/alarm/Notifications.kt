@@ -70,15 +70,20 @@ object Notifications {
         val start = alarm.getLongExtra(AlarmScheduler.EXTRA_START, Schedule.now())
         val before = alarm.getIntExtra(AlarmScheduler.EXTRA_BEFORE, 0)
         val critical = alarm.getBooleanExtra(AlarmScheduler.EXTRA_CRITICAL, false)
+        val amount = alarm.getLongExtra(AlarmScheduler.EXTRA_AMOUNT, -1L).takeIf { it > 0 }
         val local = Schedule.toLocal(start, TimeZone.currentSystemDefault())
-        val text = (if (before == 0) "Agora · ${Format.time(local)}" else "Às ${Format.time(local)} · ${Schedule.describeOffset(before)}") +
-            (if (late) " · aviso atrasado" else "")
+        val text = if (amount != null) {
+            // Conta a pagar: o que importa é o valor e quando vence.
+            Format.money(amount) + if (before == 0) " · vence hoje" else " · vence ${Schedule.describeOffset(before).replace(" antes", "")}"
+        } else {
+            (if (before == 0) "Agora · ${Format.time(local)}" else "Às ${Format.time(local)} · ${Schedule.describeOffset(before)}")
+        } + (if (late) " · aviso atrasado" else "")
         val id = notificationId(key)
 
         val builder = NotificationCompat.Builder(context, if (critical) CH_CRITICAL else CH_REMINDERS)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(0xFF6C5CE7.toInt())
-            .setContentTitle(if (critical) "⚠ $title" else title)
+            .setContentTitle(if (critical) "⚠ $title" else if (amount != null) "💸 $title" else title)
             .setContentText(text)
             .setWhen(start)
             .setShowWhen(true)
