@@ -1,7 +1,5 @@
 package dev.zentro.app
 
-import androidx.compose.ui.window.Notification
-import androidx.compose.ui.window.TrayState
 import dev.zentro.app.data.FileStorage
 import dev.zentro.app.data.Repository
 import dev.zentro.shared.Format
@@ -29,7 +27,8 @@ data class Toast(val id: Long, val title: String, val message: String, val criti
 class DesktopNotifier(
     private val repo: Repository,
     private val storage: FileStorage,
-    private val tray: TrayState,
+    /** Notificação do sistema (balão da bandeja do Windows). */
+    private val systemNotify: (title: String, message: String, warning: Boolean) -> Unit,
 ) {
     private val _toasts = MutableStateFlow<List<Toast>>(emptyList())
     val toasts: StateFlow<List<Toast>> = _toasts.asStateFlow()
@@ -103,9 +102,7 @@ class DesktopNotifier(
     }
 
     private fun notify(title: String, message: String, critical: Boolean, trigger: ReminderTrigger?) {
-        runCatching {
-            tray.sendNotification(Notification(title, message, if (critical) Notification.Type.Warning else Notification.Type.Info))
-        }
+        runCatching { systemNotify(title, message, critical) }
         if (!critical) Sound.chime()
         val toast = Toast(Schedule.now() + _toasts.value.size, title, message, critical, trigger)
         _toasts.update { (it + toast).takeLast(3) }
