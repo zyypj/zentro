@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -22,6 +23,12 @@ interface Installer {
 
     /** Abre o instalador. No desktop isso fecha o app e o reabre já atualizado. */
     fun launch(version: String): Boolean
+
+    /**
+     * Pode instalar esta versão sozinho ao abrir? O desktop responde não se já tentou e o app
+     * continua na versão antiga — evita ficar reinstalando em loop se o instalador falhar.
+     */
+    fun autoInstallAllowed(version: String): Boolean = true
 }
 
 sealed interface UpdateState {
@@ -51,7 +58,9 @@ class UpdateManager(private val repo: Repository, private val installer: Install
         if (loop?.isActive == true) return
         loop = scope.launch {
             delay(4_000)
-            check()?.let { if (canInstall) install(it) }
+            // Sem conta ainda (tela de login): espera entrar para verificar.
+            repo.data.first { it.session != null }
+            check()?.let { if (canInstall && installer.autoInstallAllowed(it.version)) install(it) }
             while (isActive) {
                 delay(3 * 3_600_000L)
                 if (_state.value is UpdateState.None) check()

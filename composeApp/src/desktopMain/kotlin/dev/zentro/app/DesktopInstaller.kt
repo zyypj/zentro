@@ -19,6 +19,10 @@ class DesktopInstaller(private val startHidden: Boolean) : Installer {
     override val assetSuffix: String? = if (os.contains("win") && appPath != null) ".msi" else null
 
     private fun file(version: String) = File(tmp, "Zentro-$version.msi")
+    private val attemptFile = File(appDirectory(), "update-attempt.txt")
+
+    override fun autoInstallAllowed(version: String): Boolean =
+        runCatching { attemptFile.readText().trim() }.getOrNull() != version
 
     override suspend fun download(url: String, version: String, onProgress: (Float) -> Unit): Boolean = withContext(Dispatchers.IO) {
         val target = file(version)
@@ -38,6 +42,7 @@ class DesktopInstaller(private val startHidden: Boolean) : Installer {
         val msi = file(version)
         val app = appPath ?: return false
         if (!msi.exists()) return false
+        runCatching { attemptFile.writeText(version) }
         val script = File(tmp, "zentro-update.cmd")
         script.writeText(
             listOf(
