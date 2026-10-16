@@ -6,6 +6,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -305,6 +307,7 @@ private fun TemplateRow(icon: String, name: String, subtitle: String, onClick: (
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NoteCard(note: Note, snippet: String, selected: Boolean, tz: TimeZone, now: Long, onClick: () -> Unit) {
     val tags = remember(note.content) { Notes.tags(note.content).take(3) }
@@ -336,7 +339,7 @@ private fun NoteCard(note: Note, snippet: String, selected: Boolean, tz: TimeZon
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
-            Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     "${note.folder} · ${relative(note.updatedAt, now, tz)}" +
                         if (tasks.isNotEmpty()) " · ☑ ${tasks.count { it.done }}/${tasks.size}" else "",

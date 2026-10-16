@@ -64,7 +64,7 @@ private fun layout(ids: List<String>, edges: List<Pair<Int, Int>>): List<Offset>
         }
         for (i in 0 until n) {
             // Gravidade leve para o centro, para notas soltas não fugirem da tela.
-            dx[i] -= x[i] * 0.05f; dy[i] -= y[i] * 0.05f
+            dx[i] -= x[i] * 0.6f; dy[i] -= y[i] * 0.6f
             val d = max(0.01f, sqrt(dx[i] * dx[i] + dy[i] * dy[i]))
             x[i] += dx[i] / d * min(d, temperature)
             y[i] += dy[i] / d * min(d, temperature)
@@ -84,9 +84,13 @@ fun NoteGraph(notes: List<Note>, onOpen: (Note) -> Unit, modifier: Modifier = Mo
         Notes.graph(notes).mapNotNull { (a, b) -> index[a]?.let { ia -> index[b]?.let { ib -> ia to ib } } }
     }
     val degree = remember(edges) { IntArray(ids.size).also { d -> edges.forEach { (a, b) -> d[a]++; d[b]++ } } }
-    val positions by produceState(emptyList<Offset>(), ids, edges) {
-        value = withContext(Dispatchers.Default) { layout(ids, edges) }
+    // Até 80 notas o cálculo leva poucos milissegundos; acima disso roda em segundo plano.
+    val small = ids.size <= 80
+    val immediate = remember(ids, edges) { if (small) layout(ids, edges) else null }
+    val background by produceState(emptyList<Offset>(), ids, edges) {
+        if (!small) value = withContext(Dispatchers.Default) { layout(ids, edges) }
     }
+    val positions = immediate ?: background
     val measurer = rememberTextMeasurer()
     val colors = MaterialTheme.colorScheme
     val folderColors = remember(notes) {
