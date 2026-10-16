@@ -39,16 +39,23 @@ class DesktopNotifier(
 
     private val fired = LinkedHashMap<String, Long>()
     private var lastCheck: Long = 0
+    private val startedAt = Schedule.now()
 
     init {
-        val now = Schedule.now()
         storage.read(STATE)?.lines()?.forEach { line ->
             val (key, at) = line.split('|').takeIf { it.size == 2 } ?: return@forEach
             if (key == "lastCheck") lastCheck = at.toLongOrNull() ?: 0 else at.toLongOrNull()?.let { fired[key] = it }
         }
-        lastCheck = lastCheck.coerceIn(now - MAX_CATCH_UP, now)
-        if (lastCheck == 0L) lastCheck = now
+        // Primeira execução: começa de agora. Depois: recupera no máximo 6 horas de avisos perdidos.
+        lastCheck = if (lastCheck == 0L) startedAt else lastCheck.coerceIn(startedAt - MAX_CATCH_UP, startedAt)
     }
+
+    /**
+     * Antes de recuperar avisos perdidos, espera a primeira sincronização (ou 20s, se estiver
+     * offline) para não avisar de algo que já foi apagado ou alterado em outro aparelho.
+     */
+    private fun ready(now: Long): Boolean =
+        (repo.data.value.lastSyncOk ?: 0) >= startedAt || now - startedAt > 20_000
 
     fun start(scope: CoroutineScope) = scope.launch {
         while (isActive) {
@@ -58,7 +65,7 @@ class DesktopNotifier(
     }
 
     private fun check(now: Long) {
-        if (now <= lastCheck) return
+        if (now <= lastCheck || !ready(now)) return
         val data = repo.data.value
         if (data.session != null) {
             val tz = repo.timeZone
@@ -73,7 +80,8 @@ class DesktopNotifier(
             for (time in settings.reviewTimes.mapNotNull(Schedule::parseTime)) {
                 val at = Schedule.toMillis(LocalDateTime(today, time), tz)
                 val key = "review:$today:$time"
-                if (at !in lastCheck until now || fired.containsKey(key) || !Schedule.needsReview(settings, now)) continue
+                // Só horários que passam com o app aberto; ao abrir, o banner da tela Hoje já cobra.
+                if (at !in maxOf(lastCheck, startedAt) until now || fired.containsKey(key) || !Schedule.needsReview(settings, now)) continue
                 fired[key] = now
                 notify("Atualize sua agenda", "Você ainda não revisou a agenda de hoje. Leva 10 segundos.", critical = false, trigger = null)
             }
