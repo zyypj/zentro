@@ -28,6 +28,7 @@ Android + Desktop (Windows, Linux, macOS) sincronizados em tempo real, com servi
 - **Agenda de quem você acompanha.** Marque os compromissos da namorada, do filho ou do sócio junto com os seus: aparecem com o nome da pessoa, têm filtro próprio e também te avisam. Escreva `Ana: prova sexta 10h` e pronto.
 - **Anotações estilo Notion/Obsidian.** Pastas (Trabalho, Faculdade, Projetos...), Markdown, `[[links]]` entre notas com sugestão enquanto digita, "mencionada em", `#tags`, checklists, modelos prontos, nota do dia, todas as tarefas abertas num lugar e mapa de conexões.
 - **Atualiza sozinho.** Servidor, PC e celular buscam as versões novas no GitHub. Ao abrir, o app já baixa e instala. Com ele aberto, aparece um aviso.
+- **Contas a pagar.** `Hospedagem todo dia 5 49,90` cria uma conta mensal que avisa antes de vencer. Ao tocar em **Pagar**, a saída entra nas finanças e os avisos daquele mês param. Contas atrasadas ficam no topo da tela Hoje.
 - **Finanças sem esforço.** `45,90 almoço` registra uma saída e `+1200 freela` uma entrada, com a categoria sugerida automaticamente. Saldo do mês, entradas, saídas e para onde foi o dinheiro.
 - **Mercado Pago.** Importa automaticamente os pagamentos recebidos e feitos na sua conta.
 - **Celular e computador conectados.** Mudou num, aparece no outro em segundos (WebSocket). Funciona offline e sincroniza quando a internet volta.
@@ -139,6 +140,16 @@ zentro/
 | `ZENTRO_DATA_DIR` | `data` | Pasta do banco e da chave de sessão |
 
 Sem Pterodactyl? `docker build -t zentro . && docker run -p 8080:8080 -v zentro-data:/app/data zentro`
+
+## Backups
+
+O servidor salva uma cópia do banco em `data/backups` ao iniciar, todo dia às 03:30 e antes de cada atualização, e mantém as 20 mais recentes. Para criar uma na hora, digite `backup` no console.
+
+**Para restaurar:** pare o servidor e copie o backup desejado por cima de `data/zentro.db`. Apague `zentro.db-wal` e `zentro.db-shm`, se existirem, e inicie de novo.
+
+O app também guarda uma cópia local. Se você entrar numa conta vazia (por exemplo, depois de recriar o servidor), ele oferece recuperar os dados do aparelho. Em *Ajustes › Conta* há **Enviar meus dados de novo**.
+
+> **Atenção no Pterodactyl:** **Reinstall** preserva a pasta `data`. Já **apagar e recriar o servidor** apaga tudo, inclusive os backups. Antes disso, baixe a pasta `data` pelo gerenciador de arquivos.
 
 ## Telegram (recomendado)
 
