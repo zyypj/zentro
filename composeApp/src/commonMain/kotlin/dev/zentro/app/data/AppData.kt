@@ -62,3 +62,5 @@ data class SyncStatus(
 )
 
 fun newId(): String = Uuid.random().toString()
+
+data class RestoreOffer(val events: Int, val notes: Int, val transactions: Int, val people: Int)

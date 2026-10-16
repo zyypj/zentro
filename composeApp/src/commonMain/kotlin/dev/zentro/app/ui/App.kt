@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DateRange
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -99,6 +100,7 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
     var editingTx by remember { mutableStateOf<TxEditRequest?>(null) }
     var agendaFilter by remember { mutableStateOf<String?>(null) }
     val updateState by platform.updates.state.collectAsState()
+    val restoreOffer by repo.restoreOffer.collectAsState()
     val uriHandler = LocalUriHandler.current
 
     fun message(text: String) {
@@ -169,7 +171,7 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
             if (status.sessionExpired) {
                 Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Sua sessão expirou. Entre de novo para sincronizar.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        Text("Sua sessão expirou. Entre de novo para continuar.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                         TextButton(onClick = { scope.launch { repo.logout() } }) { Text("Entrar") }
                     }
                 }
@@ -285,6 +287,30 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                         message("Compromisso excluído")
                     },
                     onDismiss = { editingEvent = null },
+                )
+            }
+            restoreOffer?.let { offer ->
+                AlertDialog(
+                    onDismissRequest = { repo.dismissRestore() },
+                    title = { Text("Recuperar seus dados?") },
+                    text = {
+                        Text(
+                            "Encontramos neste aparelho dados da sua conta que não estão salvos: " +
+                                listOfNotNull(
+                                    offer.events.takeIf { it > 0 }?.let { "$it compromisso(s)" },
+                                    offer.notes.takeIf { it > 0 }?.let { "$it nota(s)" },
+                                    offer.transactions.takeIf { it > 0 }?.let { "$it movimentação(ões)" },
+                                    offer.people.takeIf { it > 0 }?.let { "$it pessoa(s)" },
+                                ).joinToString(", ") + ". Quer recuperar?",
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            repo.restoreBackup()
+                            message("Dados recuperados")
+                        }) { Text("Recuperar") }
+                    },
+                    dismissButton = { TextButton(onClick = { repo.dismissRestore() }) { Text("Agora não") } },
                 )
             }
             editingTx?.let { req ->

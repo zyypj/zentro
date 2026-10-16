@@ -37,6 +37,10 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
     private val _status = MutableStateFlow(SyncStatus())
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
 
+    /** Dados guardados neste aparelho que podem ser reenviados a uma conta vazia no servidor. */
+    private val _restoreOffer = MutableStateFlow<RestoreOffer?>(null)
+    val restoreOffer: StateFlow<RestoreOffer?> = _restoreOffer.asStateFlow()
+
     /** Chamado sempre que a agenda ou as configurações mudam — cada plataforma reagenda seus alarmes aqui. */
     var onScheduleChanged: ((AppData) -> Unit)? = null
 
@@ -93,12 +97,15 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
 
     suspend fun login(serverUrl: String, email: String, password: String, name: String?, register: Boolean): String? = try {
         val url = ApiClient.normalizeUrl(serverUrl)
+        // Guarda o que houver no aparelho antes de trocar de sessão — nunca jogamos dados fora.
+        saveBackup(_data.value)
         val client = ApiClient(url, null)
         val auth = if (register) client.register(name.orEmpty(), email.trim(), password) else client.login(email.trim(), password)
         update { AppData(session = Session(url, auth.token, auth.user)) }
         _status.value = SyncStatus()
         runCatching { ApiClient(url, auth.token).patchSettings(SettingsPatch(timezone = timeZone.id)) }
         sync()
+        offerRestoreIfServerEmpty(auth.user.email)
         null
     } catch (e: ApiFailure) {
         e.message ?: "Não foi possível entrar"
@@ -106,8 +113,68 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
 
     suspend fun logout() {
         stopLive()
+        saveBackup(_data.value)
         update { AppData() }
         _status.value = SyncStatus()
+    }
+
+    // ---------------- proteção contra perda de dados ----------------
+
+    private fun AppData.hasContent() = events.isNotEmpty() || notes.isNotEmpty() || transactions.isNotEmpty() || people.isNotEmpty()
+
+    private suspend fun saveBackup(data: AppData) {
+        if (data.session == null || !data.hasContent()) return
+        runCatching {
+            withContext(Dispatchers.IO) {
+                storage.write(BACKUP_FILE, ApiClient.json.encodeToString(AppData.serializer(), data.copy(outbox = emptyList())))
+            }
+        }
+    }
+
+    private fun loadBackup(): AppData? = runCatching {
+        storage.read(BACKUP_FILE)?.let { ApiClient.json.decodeFromString(AppData.serializer(), it) }
+    }.getOrNull()
+
+    /** Entrou numa conta vazia, mas este aparelho tem dados dessa mesma conta guardados? Oferece reenviar. */
+    private fun offerRestoreIfServerEmpty(email: String) {
+        if (_data.value.hasContent()) return
+        val backup = loadBackup() ?: return
+        if (!backup.session?.user?.email.equals(email, ignoreCase = true) || !backup.hasContent()) return
+        _restoreOffer.value = RestoreOffer(backup.events.size, backup.notes.size, backup.transactions.size, backup.people.size)
+    }
+
+    fun dismissRestore() {
+        _restoreOffer.value = null
+    }
+
+    /** Reenvia ao servidor os dados guardados no aparelho (após trocar de servidor ou perder o banco). */
+    fun restoreBackup() = scope.launch {
+        val backup = loadBackup() ?: return@launch
+        _restoreOffer.value = null
+        update { current ->
+            current.copy(
+                events = backup.events + current.events,
+                notes = backup.notes + current.notes,
+                transactions = backup.transactions + current.transactions,
+                people = backup.people + current.people,
+            ).enqueueEverything()
+        }
+        sync()
+    }
+
+    /** Envia de novo tudo o que está neste aparelho para o servidor (não apaga nada lá). */
+    fun reuploadAll() = scope.launch {
+        update { it.enqueueEverything() }
+        sync()
+    }
+
+    private fun AppData.enqueueEverything(): AppData {
+        var d = this
+        people.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_PERSON, it.id, person = it)) }
+        events.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_EVENT, it.id, event = it)) }
+        notes.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_NOTE, it.id, note = it)) }
+        transactions.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_TX, it.id, transaction = it)) }
+        return d
     }
 
     // ---------------- agenda ----------------
@@ -361,5 +428,6 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
 
     private companion object {
         const val FILE = "zentro-data.json"
+        const val BACKUP_FILE = "zentro-backup.json"
     }
 }
