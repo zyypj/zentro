@@ -45,12 +45,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -63,6 +71,7 @@ import dev.zentro.app.ui.ZIcons
 import dev.zentro.shared.Note
 import dev.zentro.shared.Notes
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val emojis = listOf("📝", "💼", "🎓", "🚀", "💡", "📚", "🧠", "✅", "📅", "🤝", "💰", "❤️", "🏋️", "🎯", "🔧", "🎨", "🧪", "📌", "⭐", "🔥", "🌱", "✈️", "🏠", "🎵")
 
@@ -80,8 +89,11 @@ fun NoteEditor(
     onOpenLink: (String) -> Unit,
     onOpenNote: (Note) -> Unit,
     onTag: (String) -> Unit,
+    media: NoteMedia,
     onBack: (() -> Unit)?,
 ) {
+    val scope = rememberCoroutineScope()
+    var mediaStatus by remember { mutableStateOf<String?>(null) }
     var title by remember(note.id) { mutableStateOf(note.title) }
     var content by remember(note.id) { mutableStateOf(TextFieldValue(note.content)) }
     var folder by remember(note.id) { mutableStateOf(note.folder) }
@@ -193,7 +205,32 @@ fun NoteEditor(
 
                     // ---------- conteúdo ----------
                     if (editing) {
-                        MarkdownToolbar(content) { content = it }
+                        // Imagem sempre numa linha própria, para aparecer grande na nota.
+                        fun insertBlock(line: String) {
+                            val at = content.selection.start
+                            val before = content.text.take(at)
+                            val after = content.text.drop(at)
+                            val prefix = if (before.isEmpty() || before.endsWith("\n")) "" else "\n"
+                            val suffix = if (after.startsWith("\n")) "" else "\n"
+                            content = TextFieldValue(before + prefix + line + suffix + after, TextRange(at + prefix.length + line.length + suffix.length))
+                        }
+
+                        fun addImage(source: suspend () -> Result<String>?) {
+                            scope.launch {
+                                mediaStatus = "Enviando imagem…"
+                                val result = source()
+                                mediaStatus = when {
+                                    result == null -> null
+                                    result.isSuccess -> null.also { insertBlock(result.getOrThrow()) }
+                                    else -> "Não consegui enviar a imagem. Confira a internet e tente de novo."
+                                }
+                            }
+                        }
+
+                        MarkdownToolbar(content, onImage = { addImage(media.pick) }) { content = it }
+                        mediaStatus?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                        }
                         if (pendingLink != null) {
                             Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 suggestions.forEach { s -> SuggestionChip(onClick = { completeLink(s.title) }, label = { Text("${s.icon.ifEmpty { "📝" }} ${s.title}") }) }
@@ -208,7 +245,16 @@ fun NoteEditor(
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, lineHeight = 26.sp),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 320.dp).padding(top = 8.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 320.dp).padding(top = 8.dp).onPreviewKeyEvent { event ->
+                                // Ctrl+V com uma imagem copiada (ex.: um print): envia e insere na nota.
+                                val paste = event.type == KeyEventType.KeyDown && event.key == Key.V && (event.isCtrlPressed || event.isMetaPressed)
+                                if (paste && media.hasClipboardImage()) {
+                                    addImage(media.paste)
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
                             decorationBox = { inner ->
                                 if (content.text.isEmpty()) {
                                     Text(
@@ -234,6 +280,7 @@ fun NoteEditor(
                             onToggleTask = { line -> content = TextFieldValue(Notes.toggleTask(content.text, line)) },
                             onOpenLink = { saveIfChanged(); onOpenLink(it) },
                             onTag = onTag,
+                            loadImage = media.load,
                         )
                     }
 
@@ -369,7 +416,7 @@ fun FolderPicker(folders: List<String>, current: String, onPick: (String) -> Uni
 
 /** Botões que inserem a sintaxe do Markdown para quem não quer decorar nada. */
 @Composable
-private fun MarkdownToolbar(value: TextFieldValue, onChange: (TextFieldValue) -> Unit) {
+private fun MarkdownToolbar(value: TextFieldValue, onImage: () -> Unit, onChange: (TextFieldValue) -> Unit) {
     fun wrap(prefix: String, suffix: String = prefix) {
         val sel = value.selection
         val selected = value.text.substring(sel.min, sel.max)
@@ -396,6 +443,8 @@ private fun MarkdownToolbar(value: TextFieldValue, onChange: (TextFieldValue) ->
         ToolButton("•") { linePrefix("- ") }
         ToolButton("☐") { linePrefix("- [ ] ") }
         ToolButton("[[ ]]") { wrap("[[", "]]") }
+        ToolButton("🖼", onClick = onImage)
+        ToolButton("▦") { wrap("\n| Coluna 1 | Coluna 2 |\n|---|---|\n| ", " |  |\n") }
         ToolButton("#") { wrap("#", "") }
         ToolButton("❝") { linePrefix("> ") }
         ToolButton("</>") { wrap("`") }

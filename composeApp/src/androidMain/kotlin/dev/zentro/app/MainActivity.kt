@@ -7,12 +7,25 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
+import kotlinx.coroutines.CompletableDeferred
 import dev.zentro.app.ui.App
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    private var pickResult: CompletableDeferred<Uri?>? = null
+    private val pickMedia = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> pickResult?.complete(uri) }
+
+    /** Abre o seletor de fotos do Android e espera a escolha (null se cancelar). */
+    suspend fun pickImageUri(): Uri? {
+        val result = CompletableDeferred<Uri?>()
+        pickResult = result
+        pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        return result.await()
+    }
 
     fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

@@ -7,6 +7,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.swing.Swing
+import kotlinx.coroutines.withContext
 import dev.zentro.app.data.Repository
 import dev.zentro.app.data.UpdateManager
 import dev.zentro.app.ui.ChecklistRow
@@ -52,6 +57,16 @@ class DesktopPlatform(
             )
         }
     }
+
+    override suspend fun pickImage(): PickedImage? {
+        val file = withContext(Dispatchers.Swing) { DesktopImages.chooseFile() } ?: return null
+        return withContext(Dispatchers.IO) { PickedImage(DesktopImages.shrink(file.readBytes()), file.name) }
+    }
+
+    override fun clipboardImage(): PickedImage? = DesktopImages.fromClipboard()?.let { PickedImage(it, "print.png") }
+
+    override fun decodeImage(bytes: ByteArray): ImageBitmap? =
+        runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
 
     override fun testNotification() {
         val now = Schedule.now()

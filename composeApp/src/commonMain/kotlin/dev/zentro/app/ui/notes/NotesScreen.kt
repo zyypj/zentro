@@ -79,6 +79,7 @@ fun NotesScreen(
     onSave: (Note) -> Unit,
     onDelete: (String) -> Unit,
     onMessage: (String) -> Unit,
+    media: NoteMedia,
 ) {
     val wide = LocalWide.current
     var view by remember { mutableStateOf(NotesView.ALL) }
@@ -153,6 +154,7 @@ fun NotesScreen(
                     view = NotesView.ALL
                     if (!wide) openId = null
                 },
+                media = media,
                 onBack = back,
             )
         }

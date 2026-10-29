@@ -1,6 +1,13 @@
 package dev.zentro.app
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -105,4 +112,31 @@ class AndroidPlatform(private val activity: MainActivity) : Platform {
     }
 
     override fun testNotification() = AlarmScheduler.scheduleTest(activity)
+
+    override suspend fun pickImage(): PickedImage? {
+        val uri = activity.pickImageUri() ?: return null
+        return withContext(Dispatchers.IO) {
+            val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+            PickedImage(shrink(bytes), uri.lastPathSegment?.substringAfterLast('/') ?: "foto.jpg")
+        }
+    }
+
+    override fun decodeImage(bytes: ByteArray): ImageBitmap? =
+        runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }.getOrNull()
+
+    /** Fotos do celular costumam ter 4000 px e 5 MB: reduz para 1920 px antes de enviar. */
+    private fun shrink(bytes: ByteArray): ByteArray {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val side = maxOf(bounds.outWidth, bounds.outHeight)
+        if (side <= 0 || (side <= 1920 && bytes.size <= 1_500_000) || bounds.outMimeType == "image/gif") return bytes
+        var sample = 1
+        while (side / (sample * 2) >= 1920) sample *= 2
+        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return bytes
+        val ratio = minOf(1f, 1920f / maxOf(decoded.width, decoded.height))
+        val scaled = if (ratio < 1f) Bitmap.createScaledBitmap(decoded, (decoded.width * ratio).toInt(), (decoded.height * ratio).toInt(), true) else decoded
+        val out = ByteArrayOutputStream()
+        scaled.compress(if (scaled.hasAlpha()) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, 85, out)
+        return out.toByteArray()
+    }
 }

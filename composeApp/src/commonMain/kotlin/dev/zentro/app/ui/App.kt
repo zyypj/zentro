@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import dev.zentro.app.Platform
+import dev.zentro.app.ui.notes.NoteMedia
 import dev.zentro.app.ui.notes.NotesScreen
 import dev.zentro.app.data.AppData
 import dev.zentro.app.data.Repository
@@ -103,6 +104,18 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
     var agendaFilter by remember { mutableStateOf<String?>(null) }
     val updateState by platform.updates.state.collectAsState()
     val restoreOffer by repo.restoreOffer.collectAsState()
+    val noteMedia = remember {
+        NoteMedia(
+            load = { src -> repo.imageBytes(src)?.let { platform.decodeImage(it) } },
+            pick = {
+                platform.pickImage()?.let { img ->
+                    repo.uploadImage(img.bytes, img.name).map { "![${img.name.substringBeforeLast('.')}]($it)" }
+                }
+            },
+            hasClipboardImage = { platform.clipboardImage() != null },
+            paste = { platform.clipboardImage()?.let { img -> repo.uploadImage(img.bytes, img.name).map { "![]($it)" } } },
+        )
+    }
     val uriHandler = LocalUriHandler.current
 
     fun message(text: String) {
@@ -239,6 +252,7 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                         onSave = { repo.saveNote(it) },
                         onDelete = { repo.deleteNote(it) },
                         onMessage = ::message,
+                        media = noteMedia,
                     )
                     Tab.FINANCE -> FinanceScreen(
                         transactions = data.activeTransactions,
