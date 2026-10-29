@@ -15,6 +15,19 @@ import java.io.File
 class AndroidStorage(private val dir: File) : FileStorage {
     override fun read(name: String): String? = File(dir, name).takeIf { it.exists() }?.readText()
 
+    override fun readBytes(name: String): ByteArray? = File(dir, name).takeIf { it.exists() }?.readBytes()
+
+    override fun writeBytes(name: String, bytes: ByteArray) {
+        val target = File(dir, name)
+        target.parentFile?.mkdirs()
+        val tmp = File(target.path + ".tmp")
+        tmp.writeBytes(bytes)
+        if (!tmp.renameTo(target)) {
+            target.delete()
+            tmp.renameTo(target)
+        }
+    }
+
     override fun write(name: String, content: String) {
         val target = File(dir, name)
         val tmp = File(dir, "$name.tmp")

@@ -1,5 +1,6 @@
 package dev.zentro.app.data
 
+import dev.zentro.shared.AiLink
 import dev.zentro.shared.ApiError
 import dev.zentro.shared.ApiRoutes
 import dev.zentro.shared.AuthRequest
@@ -18,6 +19,7 @@ import dev.zentro.shared.SyncResponse
 import dev.zentro.shared.TelegramLink
 import dev.zentro.shared.Transaction
 import dev.zentro.shared.UpdateInfo
+import dev.zentro.shared.UploadedFile
 import dev.zentro.shared.UserSettings
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -37,6 +39,7 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.contentLength
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -113,6 +116,24 @@ class ApiClient(serverUrl: String, private val token: String?) {
         exec { http.delete("$base${ApiRoutes.NOTES}/$id") { prepare() } }
     }
 
+    suspend fun uploadFile(bytes: ByteArray, name: String): UploadedFile =
+        exec {
+            http.post("$base${ApiRoutes.FILES}") {
+                token?.let { bearerAuth(it) }
+                header("X-File-Name", name.take(200))
+                contentType(ContentType.Application.OctetStream)
+                setBody(bytes)
+            }
+        }.body()
+
+    suspend fun downloadFile(id: String): ByteArray =
+        exec { http.get("$base${ApiRoutes.FILES}/$id") { token?.let { bearerAuth(it) } } }.readRawBytes()
+
+    suspend fun aiLink(reset: Boolean): AiLink =
+        exec {
+            if (reset) http.post("$base${ApiRoutes.AI_LINK}/reset") { prepare() } else http.get("$base${ApiRoutes.AI_LINK}") { prepare() }
+        }.body()
+
     suspend fun latestRelease(): UpdateInfo = exec { http.get("$base${ApiRoutes.UPDATE}") }.body()
 
     suspend fun review(date: String): UserSettings =
@@ -169,6 +190,12 @@ class ApiClient(serverUrl: String, private val token: String?) {
             }
             expectSuccess = false
         }
+
+        /** Baixa uma imagem externa (https://...) citada numa nota. */
+        suspend fun downloadUrl(url: String): ByteArray? = runCatching {
+            val response = http.get(url)
+            if (response.status.isSuccess()) response.readRawBytes() else null
+        }.getOrNull()
 
         /** Última release direto do GitHub — reserva para quando o servidor não está acessível. */
         suspend fun githubLatest(repo: String = ApiRoutes.DEFAULT_REPO): UpdateInfo? = runCatching {

@@ -447,6 +447,44 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         }
     }
 
+    // ---------------- imagens das notas ----------------
+
+    private val imageMemory = LinkedHashMap<String, ByteArray>()
+
+    /** Envia uma imagem e devolve o endereço para usar na nota (`zentro:<id>`). Precisa de internet. */
+    suspend fun uploadImage(bytes: ByteArray, name: String): Result<String> = online { client ->
+        val id = client.uploadFile(bytes, name).id
+        runCatching { withContext(Dispatchers.IO) { storage.writeBytes("images/$id", bytes) } }
+        dev.zentro.shared.Markdown.FILE_SCHEME + id
+    }
+
+    /**
+     * Conteúdo de uma imagem da nota: primeiro da memória, depois do cache no aparelho e, por fim,
+     * do servidor (ou da internet, para links https). Depois da primeira vez funciona offline.
+     */
+    suspend fun imageBytes(src: String): ByteArray? {
+        imageMemory[src]?.let { return it }
+        val key = dev.zentro.shared.Markdown.fileId(src)?.let { "images/$it" } ?: "images/url-${src.hashCode().toUInt()}"
+        val cached = withContext(Dispatchers.IO) { runCatching { storage.readBytes(key) }.getOrNull() }
+        val bytes = cached ?: run {
+            val fileId = dev.zentro.shared.Markdown.fileId(src)
+            val downloaded = when {
+                fileId != null -> online { it.downloadFile(fileId) }.getOrNull()
+                src.startsWith("https://") || src.startsWith("http://") -> ApiClient.downloadUrl(src)
+                else -> null
+            } ?: return null
+            withContext(Dispatchers.IO) { runCatching { storage.writeBytes(key, downloaded) } }
+            downloaded
+        }
+        imageMemory[src] = bytes
+        if (imageMemory.size > 40) imageMemory.remove(imageMemory.keys.first())
+        return bytes
+    }
+
+    // ---------------- IAs (Claude e ChatGPT via MCP) ----------------
+
+    suspend fun aiLink(reset: Boolean = false): Result<dev.zentro.shared.AiLink> = online { it.aiLink(reset) }
+
     suspend fun telegramLink(): Result<TelegramLink> = online { it.telegramLink() }
     suspend fun telegramUnlink(): Result<Unit> = online { it.telegramUnlink() }.also { sync() }
     suspend fun telegramTest(): Result<Unit> = online { it.telegramTest() }
