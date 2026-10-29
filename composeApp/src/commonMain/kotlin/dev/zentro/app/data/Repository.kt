@@ -105,7 +105,7 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         _status.value = SyncStatus()
         runCatching { ApiClient(url, auth.token).patchSettings(SettingsPatch(timezone = timeZone.id)) }
         sync()
-        offerRestoreIfServerEmpty(auth.user.email)
+        offerRestore(auth.user.email)
         null
     } catch (e: ApiFailure) {
         e.message ?: "Não foi possível entrar"
@@ -126,7 +126,8 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         if (data.session == null || !data.hasContent()) return
         runCatching {
             withContext(Dispatchers.IO) {
-                storage.write(BACKUP_FILE, ApiClient.json.encodeToString(AppData.serializer(), data.copy(outbox = emptyList())))
+                // A fila de envio vai junto: inclui exclusões que ainda não chegaram ao servidor.
+                storage.write(BACKUP_FILE, ApiClient.json.encodeToString(AppData.serializer(), data))
             }
         }
     }
@@ -135,29 +136,71 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         storage.read(BACKUP_FILE)?.let { ApiClient.json.decodeFromString(AppData.serializer(), it) }
     }.getOrNull()
 
-    /** Entrou numa conta vazia, mas este aparelho tem dados dessa mesma conta guardados? Oferece reenviar. */
-    private fun offerRestoreIfServerEmpty(email: String) {
-        if (_data.value.hasContent()) return
-        val backup = loadBackup() ?: return
-        if (!backup.session?.user?.email.equals(email, ignoreCase = true) || !backup.hasContent()) return
-        _restoreOffer.value = RestoreOffer(backup.events.size, backup.notes.size, backup.transactions.size, backup.people.size)
+    /**
+     * O que a cópia guardada tem e o servidor não: itens alterados no aparelho depois da última
+     * sincronização que deu certo (feitos sem internet ou com o servidor fora do ar), mais o que
+     * estava na fila de envio. Itens que o servidor já tem numa versão mais nova ficam de fora.
+     */
+    private class Unsynced(
+        val events: List<Event>,
+        val notes: List<Note>,
+        val transactions: List<Transaction>,
+        val people: List<Person>,
+        val pending: List<PendingOp>,
+    ) {
+        val isEmpty get() = events.isEmpty() && notes.isEmpty() && transactions.isEmpty() && people.isEmpty() && pending.isEmpty()
+    }
+
+    private fun unsynced(email: String): Unsynced? {
+        val backup = loadBackup() ?: return null
+        if (!backup.session?.user?.email.equals(email, ignoreCase = true)) return null
+        val current = _data.value
+        val since = backup.lastSyncOk ?: 0L
+        val events = backup.events.filter { (id, e) -> e.updatedAt > since && (current.events[id]?.updatedAt ?: 0) < e.updatedAt }.values.toList()
+        val notes = backup.notes.filter { (id, n) -> n.updatedAt > since && (current.notes[id]?.updatedAt ?: 0) < n.updatedAt }.values.toList()
+        val transactions = backup.transactions.filter { (id, t) -> t.updatedAt > since && (current.transactions[id]?.updatedAt ?: 0) < t.updatedAt }.values.toList()
+        val people = backup.people.filter { (id, p) -> p.updatedAt > since && (current.people[id]?.updatedAt ?: 0) < p.updatedAt }.values.toList()
+        return Unsynced(events, notes, transactions, people, backup.outbox).takeIf { !it.isEmpty }
+    }
+
+    /** Ao entrar: se este aparelho tem alterações dessa conta que não chegaram ao servidor, oferece enviar. */
+    private fun offerRestore(email: String) {
+        val u = unsynced(email) ?: return
+        _restoreOffer.value = RestoreOffer(u.events.size, u.notes.size, u.transactions.size, u.people.size)
     }
 
     fun dismissRestore() {
         _restoreOffer.value = null
     }
 
-    /** Reenvia ao servidor os dados guardados no aparelho (após trocar de servidor ou perder o banco). */
+    /** Envia ao servidor as alterações guardadas no aparelho que ainda não tinham chegado lá. */
     fun restoreBackup() = scope.launch {
-        val backup = loadBackup() ?: return@launch
+        val email = _data.value.session?.user?.email ?: return@launch
+        val u = unsynced(email) ?: return@launch
         _restoreOffer.value = null
         update { current ->
-            current.copy(
-                events = backup.events + current.events,
-                notes = backup.notes + current.notes,
-                transactions = backup.transactions + current.transactions,
-                people = backup.people + current.people,
-            ).enqueueEverything()
+            var d = current.copy(
+                events = current.events + u.events.associateBy { it.id },
+                notes = current.notes + u.notes.associateBy { it.id },
+                transactions = current.transactions + u.transactions.associateBy { it.id },
+                people = current.people + u.people.associateBy { it.id },
+            )
+            u.people.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_PERSON, it.id, person = it)) }
+            u.events.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_EVENT, it.id, event = it)) }
+            u.notes.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_NOTE, it.id, note = it)) }
+            u.transactions.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_TX, it.id, transaction = it)) }
+            // Exclusões feitas offline que estavam na fila.
+            u.pending.filter { it.kind.name.startsWith("DELETE") }.forEach { op ->
+                d = d.enqueue(op)
+                d = when (op.kind) {
+                    OpKind.DELETE_EVENT -> d.copy(events = d.events - op.targetId)
+                    OpKind.DELETE_NOTE -> d.copy(notes = d.notes - op.targetId)
+                    OpKind.DELETE_TX -> d.copy(transactions = d.transactions - op.targetId)
+                    OpKind.DELETE_PERSON -> d.copy(people = d.people - op.targetId)
+                    else -> d
+                }
+            }
+            d
         }
         sync()
     }
@@ -484,6 +527,8 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
     // ---------------- IAs (Claude e ChatGPT via MCP) ----------------
 
     suspend fun aiLink(reset: Boolean = false): Result<dev.zentro.shared.AiLink> = online { it.aiLink(reset) }
+
+    suspend fun changePassword(current: String, new: String): Result<Unit> = online { it.changePassword(current, new) }
 
     suspend fun telegramLink(): Result<TelegramLink> = online { it.telegramLink() }
     suspend fun telegramUnlink(): Result<Unit> = online { it.telegramUnlink() }.also { sync() }

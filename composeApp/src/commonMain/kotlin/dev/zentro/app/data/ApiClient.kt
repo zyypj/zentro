@@ -86,6 +86,10 @@ class ApiClient(serverUrl: String, private val token: String?) {
     suspend fun register(name: String, email: String, password: String): AuthResponse =
         exec { http.post("$base${ApiRoutes.REGISTER}") { prepare(); setBody(AuthRequest(email, password, name)) } }.body()
 
+    suspend fun changePassword(current: String, new: String) {
+        exec { http.post("$base${ApiRoutes.PASSWORD}") { prepare(); setBody(dev.zentro.shared.PasswordChange(current, new)) } }
+    }
+
     suspend fun sync(since: Long): SyncResponse = exec { http.get("$base${ApiRoutes.SYNC}?since=$since") { prepare() } }.body()
 
     suspend fun putEvent(event: Event): Event =
