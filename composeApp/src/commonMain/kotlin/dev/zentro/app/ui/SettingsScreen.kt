@@ -73,6 +73,7 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
     var addingTime by remember { mutableStateOf(false) }
     var addingPerson by remember { mutableStateOf(false) }
     var removingPerson by remember { mutableStateOf<Person?>(null) }
+    var changingPassword by remember { mutableStateOf(false) }
     val updateState by platform.updates.state.collectAsState()
 
     Column(
@@ -105,10 +106,13 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                 )
             }
-            TextButton(onClick = {
-                repo.reuploadAll()
-                onMessage("Enviando seus dados de novo")
-            }, modifier = Modifier.padding(top = 4.dp)) { Text("Enviar meus dados de novo") }
+            Row {
+                TextButton(onClick = { changingPassword = true }) { Text("Trocar senha") }
+                TextButton(onClick = {
+                    repo.reuploadAll()
+                    onMessage("Enviando seus dados de novo")
+                }) { Text("Enviar meus dados de novo") }
+            }
         }
 
         // ---------- confiabilidade dos avisos ----------
@@ -220,6 +224,10 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp).align(Alignment.CenterHorizontally),
         )
+    }
+
+    if (changingPassword) {
+        ChangePasswordDialog(repo, onDone = { msg -> changingPassword = false; msg?.let(onMessage) })
     }
 
     if (addingPerson) {
@@ -481,4 +489,52 @@ private fun CopyBox(text: String, onCopy: () -> Unit) {
         )
         TextButton(onClick = onCopy) { Text("Copiar") }
     }
+}
+
+/** Troca a senha. Esqueceu a atual? No console do servidor, digite "senha seu@email.com". */
+@Composable
+private fun ChangePasswordDialog(repo: Repository, onDone: (String?) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var current by remember { mutableStateOf("") }
+    var new by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { onDone(null) },
+        title = { Text("Trocar senha") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = current,
+                    onValueChange = { current = it; error = null },
+                    label = { Text("Senha atual") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = new,
+                    onValueChange = { new = it; error = null },
+                    label = { Text("Nova senha") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    supportingText = { Text(error ?: "Mínimo de 6 caracteres") },
+                    isError = error != null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && current.isNotEmpty() && new.length >= 6, onClick = {
+                busy = true
+                scope.launch {
+                    repo.changePassword(current, new)
+                        .onSuccess { onDone("Senha trocada") }
+                        .onFailure { error = it.message ?: "Não consegui trocar a senha" }
+                    busy = false
+                }
+            }) { Text("Trocar") }
+        },
+        dismissButton = { TextButton(onClick = { onDone(null) }) { Text("Cancelar") } },
+    )
 }
