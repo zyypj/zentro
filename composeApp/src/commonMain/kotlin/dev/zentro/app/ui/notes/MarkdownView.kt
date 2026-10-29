@@ -1,6 +1,23 @@
 package dev.zentro.app.ui.notes
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import dev.zentro.shared.Notes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +65,7 @@ fun MarkdownView(
     onToggleTask: (Int) -> Unit,
     onOpenLink: (String) -> Unit,
     onTag: (String) -> Unit,
+    loadImage: suspend (String) -> ImageBitmap?,
     modifier: Modifier = Modifier,
 ) {
     val blocks = remember(content) { Markdown.parse(content) }
@@ -128,6 +146,8 @@ fun MarkdownView(
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(codeBg).padding(12.dp),
                 )
                 MdBlock.Divider -> HorizontalDivider(Modifier.padding(vertical = 8.dp), color = colors.outlineVariant)
+                is MdBlock.Table -> MdTable(block, ::styled)
+                is MdBlock.Image -> NoteImage(block.src, block.alt, loadImage)
             }
         }
     }
@@ -138,5 +158,100 @@ private fun ListLine(indent: Int, marker: String, content: @Composable () -> Uni
     Row(Modifier.padding(start = (indent * 20).dp)) {
         Text(marker, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.width(24.dp))
         content()
+    }
+}
+
+/** Tabela: cabeçalho destacado, linhas alternadas e rolagem lateral quando é larga demais. */
+@Composable
+private fun MdTable(table: MdBlock.Table, styled: (String) -> AnnotatedString) {
+    val colors = MaterialTheme.colorScheme
+    // Largura de cada coluna pelo texto mais longo dela (com limites para não ficar gigante).
+    val widths = remember(table) {
+        table.header.indices.map { col ->
+            val longest = (listOf(table.header[col]) + table.rows.map { it[col] }).maxOf { Notes.plain(it).length }
+            (longest * 8 + 28).coerceIn(72, 320).dp
+        }
+    }
+    fun align(col: Int) = when (table.aligns[col]) {
+        MdBlock.Align.CENTER -> TextAlign.Center
+        MdBlock.Align.RIGHT -> TextAlign.End
+        MdBlock.Align.LEFT -> TextAlign.Start
+    }
+    Box(
+        Modifier.padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp))
+            .border(1.dp, colors.outlineVariant, RoundedCornerShape(12.dp))
+            .horizontalScroll(rememberScrollState()),
+    ) {
+        Column {
+            Row(Modifier.background(colors.surfaceContainerHigh)) {
+                table.header.forEachIndexed { col, cell ->
+                    Text(
+                        styled(cell),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = align(col),
+                        modifier = Modifier.width(widths[col]).padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
+                }
+            }
+            table.rows.forEachIndexed { index, row ->
+                HorizontalDivider(color = colors.outlineVariant)
+                Row(Modifier.background(if (index % 2 == 1) colors.surfaceContainerLow else Color.Transparent)) {
+                    row.forEachIndexed { col, cell ->
+                        Text(
+                            styled(cell),
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = align(col),
+                            modifier = Modifier.width(widths[col]).padding(horizontal = 12.dp, vertical = 9.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Imagem da nota, carregada do aparelho ou do servidor. Toque para ver em tela cheia. */
+@Composable
+private fun NoteImage(src: String, alt: String, loadImage: suspend (String) -> ImageBitmap?) {
+    var loading by remember(src) { mutableStateOf(true) }
+    val bitmap by produceState<ImageBitmap?>(null, src) {
+        value = runCatching { loadImage(src) }.getOrNull()
+        loading = false
+    }
+    var zoom by remember { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.padding(vertical = 6.dp)) {
+        val image = bitmap
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = alt.ifBlank { null },
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { zoom = true },
+            )
+        } else {
+            Box(
+                Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(12.dp)).background(colors.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    if (loading) "Carregando imagem…" else "Imagem indisponível agora",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+        if (alt.isNotBlank()) {
+            Text(alt, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+    val image = bitmap
+    if (zoom && image != null) {
+        Dialog(onDismissRequest = { zoom = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.92f)).clickable { zoom = false }, contentAlignment = Alignment.Center) {
+                Image(image, alt.ifBlank { null }, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(16.dp))
+            }
+        }
     }
 }
