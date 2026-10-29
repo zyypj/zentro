@@ -2,6 +2,16 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.5.1] - 2026-10-29
+
+### Novidades
+- **Esqueceu a senha?** No console do servidor, `senha seu@email.com` cria uma senha temporária; `contas` lista os e-mails cadastrados.
+- **Trocar senha** em Ajustes › Conta.
+- **Colar imagens no PC:** além de prints, o Ctrl+V agora também cola arquivos de imagem copiados no Explorer.
+
+### Correções
+- Ao entrar de novo na conta, o app oferece enviar as alterações feitas enquanto o servidor estava fora do ar (antes só oferecia se a conta estivesse vazia). A cópia local agora também guarda as exclusões pendentes.
+
 ## [1.5.0] - 2026-10-29
 
 ### Novidades
