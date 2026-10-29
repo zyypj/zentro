@@ -258,7 +258,7 @@ fun NoteEditor(
                             decorationBox = { inner ->
                                 if (content.text.isEmpty()) {
                                     Text(
-                                        "Comece a escrever…",
+                                        "Comece a escrever… Para pôr uma imagem, cole com Ctrl+V ou use o botão 🖼.",
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                     )

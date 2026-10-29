@@ -31,13 +31,38 @@ object DesktopImages {
         return File(dialog.directory, name).takeIf { it.isFile }
     }
 
-    /** Imagem copiada (print, imagem do navegador...), já em PNG. */
-    fun fromClipboard(): ByteArray? = runCatching {
+    fun isImageFile(file: File) = file.isFile && file.extension.lowercase() in extensions
+
+    /** Lê e reduz arquivos de imagem (arrastados ou copiados no Explorer); ignora o que não for imagem. */
+    fun fromFiles(files: List<File>): List<Pair<ByteArray, String>> =
+        files.filter(::isImageFile).take(10).mapNotNull { f -> runCatching { shrink(f.readBytes()) to f.name }.getOrNull() }
+
+    /** Tem imagem na área de transferência? Checagem rápida, sem ler a imagem. */
+    fun clipboardHasImage(): Boolean = runCatching {
         val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-        if (!clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)) return null
-        val image = clipboard.getData(DataFlavor.imageFlavor) as? Image ?: return null
-        encode(toBuffered(image), forcePng = true)
-    }.getOrNull()
+        clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor) ||
+            (clipboard.isDataFlavorAvailable(DataFlavor.javaFileListFlavor) && clipboardFiles().any(::isImageFile))
+    }.getOrDefault(false)
+
+    @Suppress("UNCHECKED_CAST")
+    private fun clipboardFiles(): List<File> =
+        Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.javaFileListFlavor) as? List<File> ?: emptyList()
+
+    /**
+     * Imagens da área de transferência: um print (Win+Shift+S), "copiar imagem" do navegador ou
+     * arquivos de imagem copiados no Explorer (Ctrl+C num arquivo).
+     */
+    fun fromClipboard(): List<Pair<ByteArray, String>> = runCatching {
+        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+        when {
+            clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor) -> {
+                val image = clipboard.getData(DataFlavor.imageFlavor) as? Image ?: return emptyList()
+                listOf(encode(toBuffered(image), forcePng = true) to "print.png")
+            }
+            clipboard.isDataFlavorAvailable(DataFlavor.javaFileListFlavor) -> fromFiles(clipboardFiles())
+            else -> emptyList()
+        }
+    }.getOrDefault(emptyList())
 
     /** Reduz fotos grandes (lado maior até 1920 px) para a nota abrir rápido no celular e no PC. */
     fun shrink(bytes: ByteArray): ByteArray {

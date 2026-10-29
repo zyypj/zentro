@@ -63,7 +63,10 @@ class DesktopPlatform(
         return withContext(Dispatchers.IO) { PickedImage(DesktopImages.shrink(file.readBytes()), file.name) }
     }
 
-    override fun clipboardImage(): PickedImage? = DesktopImages.fromClipboard()?.let { PickedImage(it, "print.png") }
+    override fun hasClipboardImage(): Boolean = DesktopImages.clipboardHasImage()
+
+    override fun clipboardImage(): PickedImage? =
+        DesktopImages.fromClipboard().firstOrNull()?.let { (bytes, name) -> PickedImage(bytes, name) }
 
     override fun decodeImage(bytes: ByteArray): ImageBitmap? =
         runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()

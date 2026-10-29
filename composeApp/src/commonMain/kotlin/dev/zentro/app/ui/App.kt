@@ -112,8 +112,8 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                     repo.uploadImage(img.bytes, img.name).map { "![${img.name.substringBeforeLast('.')}]($it)" }
                 }
             },
-            hasClipboardImage = { platform.clipboardImage() != null },
-            paste = { platform.clipboardImage()?.let { img -> repo.uploadImage(img.bytes, img.name).map { "![]($it)" } } },
+            hasClipboardImage = { platform.hasClipboardImage() },
+            paste = { platform.clipboardImage()?.let { img -> repo.uploadImage(img.bytes, img.name).map { "![${if (img.name == "print.png") "" else img.name.substringBeforeLast('.')}]($it)" } } },
         )
     }
     val uriHandler = LocalUriHandler.current
@@ -340,23 +340,23 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
             restoreOffer?.let { offer ->
                 AlertDialog(
                     onDismissRequest = { repo.dismissRestore() },
-                    title = { Text("Recuperar seus dados?") },
+                    title = { Text("Enviar alterações guardadas?") },
                     text = {
                         Text(
-                            "Encontramos neste aparelho dados da sua conta que não estão salvos: " +
+                            "Este aparelho tem alterações da sua conta que ainda não chegaram ao servidor: " +
                                 listOfNotNull(
                                     offer.events.takeIf { it > 0 }?.let { "$it compromisso(s)" },
                                     offer.notes.takeIf { it > 0 }?.let { "$it nota(s)" },
                                     offer.transactions.takeIf { it > 0 }?.let { "$it movimentação(ões)" },
                                     offer.people.takeIf { it > 0 }?.let { "$it pessoa(s)" },
-                                ).joinToString(", ") + ". Quer recuperar?",
+                                ).joinToString(", ").ifEmpty { "algumas exclusões" } + ". Enviar agora?",
                         )
                     },
                     confirmButton = {
                         TextButton(onClick = {
                             repo.restoreBackup()
-                            message("Dados recuperados")
-                        }) { Text("Recuperar") }
+                            message("Alterações enviadas")
+                        }) { Text("Enviar") }
                     },
                     dismissButton = { TextButton(onClick = { repo.dismissRestore() }) { Text("Agora não") } },
                 )

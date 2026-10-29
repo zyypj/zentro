@@ -24,6 +24,9 @@ interface Platform {
     /** Imagem copiada na área de transferência (para colar com Ctrl+V), quando houver. */
     fun clipboardImage(): PickedImage? = null
 
+    /** Checagem rápida, sem ler a imagem: decide se o Ctrl+V cola uma imagem ou texto. */
+    fun hasClipboardImage(): Boolean = false
+
     fun decodeImage(bytes: ByteArray): ImageBitmap?
 }
 
