@@ -20,6 +20,9 @@ object ApiRoutes {
     const val PEOPLE = "/api/people"
     const val NOTES = "/api/notes"
     const val UPDATE = "/api/update"
+    const val FILES = "/api/files"
+    const val AI_LINK = "/api/ai/link"
+    const val MCP = "/mcp"
 
     /** Repositório oficial; o servidor pode apontar para outro com a variável GITHUB_REPO. */
     const val DEFAULT_REPO = "zyypj/zentro"
@@ -85,6 +88,17 @@ data class ApiError(val message: String)
 /** Mensagem enviada pelo WebSocket de tempo real: avisa que há dados novos para sincronizar. */
 @Serializable
 data class LiveMessage(val type: String, val serverTime: Long)
+
+/** Resposta do envio de um arquivo (imagem de nota). */
+@Serializable
+data class UploadedFile(val id: String)
+
+/**
+ * Chave para conectar o Claude ou o ChatGPT às suas notas via MCP. [mcpPath] já inclui a chave
+ * (`/mcp/<chave>`), porque o ChatGPT não deixa configurar cabeçalhos de autenticação.
+ */
+@Serializable
+data class AiLink(val token: String, val mcpPath: String)
 
 /** Última versão publicada no GitHub Releases, com os links de download de cada plataforma. */
 @Serializable

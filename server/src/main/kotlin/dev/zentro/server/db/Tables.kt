@@ -84,8 +84,21 @@ object Settings : Table("settings") {
     val mpUserId = long("mp_user_id").nullable()
     val mpLastSync = long("mp_last_sync").nullable()
     val mpWebhookKey = varchar("mp_webhook_key", 40)
+    /** Chave de acesso das IAs (MCP) às notas; null até o usuário gerar uma. */
+    val aiToken = varchar("ai_token", 64).nullable()
     val updatedAt = long("updated_at")
     override val primaryKey = PrimaryKey(userId)
+}
+
+/** Imagens das notas. O conteúdo fica em data/files/<usuário>/<id>; aqui só os dados do arquivo. */
+object Files : Table("files") {
+    val userId = long("user_id").references(Users.id)
+    val id = varchar("id", 40)
+    val name = varchar("name", 200)
+    val mime = varchar("mime", 80)
+    val size = long("size")
+    val createdAt = long("created_at")
+    override val primaryKey = PrimaryKey(userId, id)
 }
 
 /** Avisos já enviados pelo servidor (Telegram), para nunca mandar o mesmo duas vezes. */

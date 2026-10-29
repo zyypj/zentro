@@ -69,7 +69,7 @@ class Store(val file: File) {
     init {
         TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
         transaction(db) {
-            SchemaUtils.createMissingTablesAndColumns(Users, Events, People, NotesTable, Transactions, Settings, SentNotifications, Meta)
+            SchemaUtils.createMissingTablesAndColumns(Users, Events, People, NotesTable, Transactions, Settings, Files, SentNotifications, Meta)
         }
     }
 
@@ -221,6 +221,44 @@ class Store(val file: File) {
 
     suspend fun notesSince(userId: Long, since: Long): List<Note> = query {
         NotesTable.selectAll().where { (NotesTable.userId eq userId) and (NotesTable.updatedAt greaterEq since) }.map { it.toNote() }
+    }
+
+    suspend fun activeNotes(userId: Long): List<Note> = query {
+        NotesTable.selectAll().where { (NotesTable.userId eq userId) and (NotesTable.deleted eq false) }.map { it.toNote() }
+    }
+
+    // ---------- arquivos ----------
+
+    data class StoredFile(val id: String, val name: String, val mime: String, val size: Long)
+
+    suspend fun addFile(userId: Long, id: String, name: String, mime: String, size: Long, now: Long) = query {
+        Files.insert {
+            it[Files.userId] = userId
+            it[Files.id] = id
+            it[Files.name] = name
+            it[Files.mime] = mime
+            it[Files.size] = size
+            it[createdAt] = now
+        }
+    }
+
+    suspend fun file(userId: Long, id: String): StoredFile? = query {
+        Files.selectAll().where { (Files.userId eq userId) and (Files.id eq id) }.firstOrNull()
+            ?.let { StoredFile(it[Files.id], it[Files.name], it[Files.mime], it[Files.size]) }
+    }
+
+    // ---------- acesso das IAs (MCP) ----------
+
+    suspend fun aiToken(userId: Long, regenerate: Boolean): String = query {
+        val current = Settings.selectAll().where { Settings.userId eq userId }.first()[Settings.aiToken]
+        if (current != null && !regenerate) return@query current
+        val token = randomKey(40)
+        Settings.update({ Settings.userId eq userId }) { it[aiToken] = token }
+        token
+    }
+
+    suspend fun userByAiToken(token: String): Long? = query {
+        Settings.selectAll().where { Settings.aiToken eq token }.firstOrNull()?.get(Settings.userId)
     }
 
     // ---------- finanças ----------
