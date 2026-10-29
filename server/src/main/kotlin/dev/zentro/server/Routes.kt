@@ -4,6 +4,8 @@ import dev.zentro.server.db.Store
 import dev.zentro.server.integrations.GitHubReleases
 import dev.zentro.server.integrations.MercadoPago
 import dev.zentro.server.integrations.TelegramBot
+import dev.zentro.shared.AiLink
+import dev.zentro.shared.ApiError
 import dev.zentro.shared.ApiRoutes
 import dev.zentro.shared.AuthRequest
 import dev.zentro.shared.AuthResponse
@@ -18,13 +20,17 @@ import dev.zentro.shared.ServerInfo
 import dev.zentro.shared.SettingsPatch
 import dev.zentro.shared.SyncResponse
 import dev.zentro.shared.TelegramLink
+import dev.zentro.shared.UploadedFile
 import dev.zentro.shared.Transaction
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.auth.authenticate
 import io.ktor.server.request.receive
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
@@ -40,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.serialization.json.Json
 
 class ApiException(val status: HttpStatusCode, override val message: String) : RuntimeException(message)
 
@@ -54,6 +61,8 @@ class AppContext(
     val telegram: TelegramBot,
     val mercadoPago: MercadoPago,
     val releases: GitHubReleases,
+    val files: FileStore,
+    val mcp: McpServer,
     val scope: CoroutineScope,
 ) {
     /** Qualquer alteração na agenda conta como "agenda atualizada hoje". */
@@ -62,6 +71,9 @@ class AppContext(
         store.markReviewed(userId, Schedule.today(tz, now).toString(), now)
     }
 }
+
+private const val MAX_FILE_BYTES = 10L * 1024 * 1024
+private const val PARSE_ERROR = "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"JSON inválido\"}}"
 
 private val idPattern = Regex("^[A-Za-z0-9_-]{1,64}$")
 
@@ -131,6 +143,22 @@ fun Route.apiRoutes(ctx: AppContext) {
         )
     }
 
+    // ---------- MCP: Claude e ChatGPT lendo as notas ----------
+    // A chave vai no caminho (/mcp/<chave>, para o ChatGPT) ou no cabeçalho Authorization (Claude).
+    suspend fun ApplicationCall.handleMcp(token: String?) {
+        val userId = token?.let { store.userByAiToken(it) }
+            ?: return respond(HttpStatusCode.Unauthorized, ApiError("Chave inválida. Gere uma nova em Ajustes › Conectar ao Claude/ChatGPT."))
+        val body = runCatching { Json.parseToJsonElement(receiveText()) }.getOrNull()
+            ?: return respondText(PARSE_ERROR, ContentType.Application.Json, HttpStatusCode.BadRequest)
+        val answer = ctx.mcp.handle(userId, body)
+        if (answer == null) respond(HttpStatusCode.Accepted, "") else respondText(answer.toString(), ContentType.Application.Json)
+    }
+    post(ApiRoutes.MCP) { call.handleMcp(call.request.headers[HttpHeaders.Authorization]?.removePrefix("Bearer ")?.trim()) }
+    post("${ApiRoutes.MCP}/{token}") { call.handleMcp(call.parameters["token"]) }
+    // Sem streaming por SSE: o GET não é usado neste servidor (a especificação permite responder 405).
+    get(ApiRoutes.MCP) { call.respond(HttpStatusCode.MethodNotAllowed, "") }
+    get("${ApiRoutes.MCP}/{token}") { call.respond(HttpStatusCode.MethodNotAllowed, "") }
+
     get(ApiRoutes.UPDATE) {
         val info = ctx.releases.latest() ?: throw ApiException(HttpStatusCode.ServiceUnavailable, "Não consegui consultar o GitHub agora")
         call.respond(info)
@@ -185,6 +213,39 @@ fun Route.apiRoutes(ctx: AppContext) {
                     notes = store.notesSince(userId, since),
                 ),
             )
+        }
+
+        post(ApiRoutes.FILES) {
+            val userId = call.userId
+            val declared = call.request.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: 0
+            if (declared > MAX_FILE_BYTES) bad("Imagem grande demais (máximo 10 MB)")
+            val bytes = call.receive<ByteArray>()
+            if (bytes.isEmpty() || bytes.size > MAX_FILE_BYTES) bad("Imagem grande demais (máximo 10 MB)")
+            val mime = FileStore.mimeOf(bytes)
+            if (!mime.startsWith("image/")) bad("Envie uma imagem PNG, JPG, WEBP ou GIF")
+            val id = Store.randomKey(24)
+            ctx.files.write(userId, id, bytes)
+            val name = call.request.headers["X-File-Name"]?.take(200) ?: "imagem"
+            store.addFile(userId, id, name, mime, bytes.size.toLong(), Schedule.now())
+            call.respond(UploadedFile(id))
+        }
+
+        get("${ApiRoutes.FILES}/{id}") {
+            val file = ctx.files.read(call.userId, call.parameters["id"].orEmpty())
+                ?: throw ApiException(HttpStatusCode.NotFound, "Imagem não encontrada")
+            // O conteúdo de um id nunca muda: o app pode guardar para sempre.
+            call.response.headers.append(HttpHeaders.CacheControl, "private, max-age=31536000, immutable")
+            call.respondBytes(file.second, ContentType.parse(file.first))
+        }
+
+        get(ApiRoutes.AI_LINK) {
+            val token = store.aiToken(call.userId, regenerate = false)
+            call.respond(AiLink(token, "${ApiRoutes.MCP}/$token"))
+        }
+
+        post("${ApiRoutes.AI_LINK}/reset") {
+            val token = store.aiToken(call.userId, regenerate = true)
+            call.respond(AiLink(token, "${ApiRoutes.MCP}/$token"))
         }
 
         put("${ApiRoutes.PEOPLE}/{id}") {

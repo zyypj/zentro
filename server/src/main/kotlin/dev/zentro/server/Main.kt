@@ -105,7 +105,8 @@ fun Application.zentro(config: Config, store: Store = Store(File(config.dataDir,
     val releases = GitHubReleases(http, config.githubRepo)
     val backups = Backups(store, File(config.dataDir, "backups"))
     ServerControl.backup = { scope.launch { backups.backup("manual") } }
-    val ctx = AppContext(config, store, auth, hub, telegram, mercadoPago, releases, scope)
+    val files = FileStore(File(config.dataDir, "files"))
+    val ctx = AppContext(config, store, auth, hub, telegram, mercadoPago, releases, files, McpServer(store, files), scope)
 
     install(ContentNegotiation) { json(ZentroJson) }
     install(WebSockets) {
