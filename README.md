@@ -27,6 +27,7 @@ Android + Desktop (Windows, Linux, macOS) sincronizados em tempo real, com servi
 - **Cobra a atualização da agenda.** Nos horários que você escolher (padrão 09:00 e 20:00), se você ainda não mexeu na agenda naquele dia, o Zentro te lembra.
 - **Agenda de quem você acompanha.** Marque os compromissos da namorada, do filho ou do sócio junto com os seus: aparecem com o nome da pessoa, têm filtro próprio e também te avisam. Escreva `Ana: prova sexta 10h` e pronto.
 - **Anotações estilo Notion/Obsidian.** Pastas (Trabalho, Faculdade, Projetos...), Markdown, `[[links]]` entre notas com sugestão enquanto digita, "mencionada em", `#tags`, checklists, modelos prontos, nota do dia, todas as tarefas abertas num lugar e mapa de conexões.
+- **Claude e ChatGPT conhecem suas notas.** Conecte uma vez e peça em qualquer conversa: "faça o que está na nota Bed Wars". A IA lê a nota, incluindo tabelas e imagens, e faz o que você descreveu.
 - **Atualiza sozinho.** Servidor, PC e celular buscam as versões novas no GitHub. Ao abrir, o app já baixa e instala. Com ele aberto, aparece um aviso.
 - **Contas a pagar.** `Hospedagem todo dia 5 49,90` cria uma conta mensal que avisa antes de vencer. Ao tocar em **Pagar**, a saída entra nas finanças e os avisos daquele mês param. Contas atrasadas ficam no topo da tela Hoje.
 - **Finanças sem esforço.** `45,90 almoço` registra uma saída e `+1200 freela` uma entrada, com a categoria sugerida automaticamente. Saldo do mês, entradas, saídas e para onde foi o dinheiro.
@@ -56,12 +57,34 @@ Android + Desktop (Windows, Linux, macOS) sincronizados em tempo real, com servi
 | `[[Outra nota]]` ou `[[Outra nota\|apelido]]` | Link. Se a nota não existir, é criada ao clicar |
 | `#faculdade` | Tag, com filtro na barra lateral |
 | `**negrito**`, `*itálico*`, `` `código` ``, `> citação`, `---` | Formatação |
+| `\| A \| B \|` + `\|---\|---\|` | Tabela (o formato que o Claude e o ChatGPT usam) |
+| `![legenda](endereço)` numa linha | Imagem. No editor, use o botão 🖼 ou cole um print com Ctrl+V |
 
 - **Pastas e subpastas:** `Faculdade/Cálculo`.
 - **Modelos:** Reunião, Aula, Projeto, Ideia e Nota do dia (diário).
 - **Mencionada em:** cada nota mostra quais outras apontam para ela.
 - **Mapa:** visualize como as notas se conectam e toque para abrir.
 - **Busca:** procura em título, conteúdo e tags, com trecho destacado.
+
+## Claude e ChatGPT (MCP)
+
+O servidor expõe suas notas, **somente leitura**, pelo [Model Context Protocol](https://modelcontextprotocol.io), o padrão usado pelo Claude e pelo ChatGPT para acessar ferramentas externas. Ferramentas disponíveis:
+
+| Ferramenta | O que faz |
+|---|---|
+| `search` | Busca notas por título, conteúdo ou `#tag` |
+| `fetch` | Lê a nota completa (Markdown, tabelas e imagens) |
+| `list_notes` | Lista as notas, opcionalmente de uma pasta |
+
+**Como conectar:** no app, abra *Ajustes › Claude e ChatGPT › Conectar*.
+
+- **Claude Code:** copie o comando mostrado e rode uma vez no terminal. Ele fica disponível em todos os projetos:
+  ```bash
+  claude mcp add --scope user --transport http zentro http://SEU_SERVIDOR/mcp --header "Authorization: Bearer SUA_CHAVE"
+  ```
+- **ChatGPT:** em *Configurações › Aplicativos e conectores › Criar*, cole o endereço mostrado (`https://SEU_SERVIDOR/mcp/SUA_CHAVE`). O ChatGPT só aceita endereços **https**. Se o seu servidor é `http://IP:porta`, coloque um HTTPS na frente, por exemplo com um [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) apontando para `http://IP:porta`.
+
+Depois, em qualquer conversa: *"faça o que está na nota Bed Wars no projeto"*. Para cortar o acesso, use **Gerar chave nova**.
 
 ## Atualização automática
 
