@@ -2,6 +2,20 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.5.0] - 2026-10-29
+
+### Novidades
+- **Tabelas nas notas:** tabelas em Markdown (`| coluna | coluna |` + `|---|---|`), como as que o Claude e o ChatGPT escrevem, viram tabelas de verdade, com cabeçalho, alinhamento e rolagem lateral. Botão de tabela na barra do editor.
+- **Imagens nas notas:**
+  - Botão de imagem no editor (arquivo no PC, galeria no Android) e Ctrl+V para colar prints no PC.
+  - Fotos grandes são reduzidas antes do envio, ficam no servidor e em cache no aparelho, e abrem em tela cheia ao tocar.
+- **Claude e ChatGPT lendo suas notas (MCP):** o servidor tem um endpoint MCP somente leitura com as ferramentas `search`, `fetch` e `list_notes`.
+  - Em Ajustes › Claude e ChatGPT ficam o comando do Claude Code e o endereço do ChatGPT, prontos para copiar.
+  - Depois é só pedir numa conversa: "faça o que está na nota Bed Wars". A IA recebe o texto, as tabelas e as imagens.
+
+### Observações
+- O ChatGPT só aceita conectores em endereços `https://`; o Claude Code funciona também em `http://`.
+
 ## [1.2.0] - 2026-10-16
 
 ### Novidades
