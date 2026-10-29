@@ -1,5 +1,6 @@
 package dev.zentro.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -43,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
@@ -167,6 +169,10 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
                 AssistChip(onClick = { addingPerson = true }, label = { Text("Adicionar pessoa") }, leadingIcon = { Icon(Icons.Rounded.Add, null, Modifier.size(16.dp)) })
             }
         }
+
+        // ---------- IAs ----------
+        SectionTitle("Claude e ChatGPT")
+        AiCard(repo, session.serverUrl, onMessage)
 
         // ---------- Telegram ----------
         SectionTitle("Telegram (aviso reserva)")
@@ -378,5 +384,101 @@ private fun MercadoPagoCard(repo: Repository, data: AppData, serverUrl: String, 
                 TextButton(onClick = { scope.launch { repo.mercadoPagoDisconnect() } }) { Text("Desconectar") }
             }
         }
+    }
+}
+
+/**
+ * Conecta o Claude e o ChatGPT às notas (via MCP). Depois de conectar, basta citar a nota numa
+ * conversa — "faça o que está na nota Bed Wars" — e a IA lê e segue o que você escreveu.
+ */
+@Composable
+private fun AiCard(repo: Repository, serverUrl: String, onMessage: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
+    var link by remember { mutableStateOf<dev.zentro.shared.AiLink?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    fun load(reset: Boolean) {
+        busy = true
+        scope.launch {
+            repo.aiLink(reset).onSuccess {
+                link = it
+                if (reset) onMessage("Chave nova criada. A anterior parou de funcionar.")
+            }.onFailure { onMessage(it.message ?: "Sem conexão") }
+            busy = false
+        }
+    }
+
+    ZCard {
+        Text(
+            "Deixe o Claude e o ChatGPT lerem suas notas. Depois é só pedir numa conversa: “faça o que está na nota Bed Wars”.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        val current = link
+        if (current == null) {
+            Button(enabled = !busy, onClick = { load(reset = false) }) { Text(if (busy) "Gerando..." else "Conectar") }
+            return@ZCard
+        }
+
+        val claude = "claude mcp add --scope user --transport http zentro $serverUrl/mcp --header \"Authorization: Bearer ${current.token}\""
+        val chatgpt = serverUrl + current.mcpPath
+
+        Text("Claude Code", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Cole uma vez no terminal. Vale para todos os seus projetos.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        CopyBox(claude) {
+            clipboard.setText(AnnotatedString(claude))
+            onMessage("Comando copiado")
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("ChatGPT", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Em Configurações › Aplicativos e conectores › Criar, cole este endereço.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        CopyBox(chatgpt) {
+            clipboard.setText(AnnotatedString(chatgpt))
+            onMessage("Endereço copiado")
+        }
+        if (!serverUrl.startsWith("https://")) {
+            Text(
+                "O ChatGPT só aceita endereços que começam com https://. Com o Claude Code funciona assim mesmo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ZColors.Warning,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Não compartilhe: quem tiver esta chave consegue ler suas notas.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(enabled = !busy, onClick = { load(reset = true) }) { Text("Gerar chave nova") }
+    }
+}
+
+@Composable
+private fun CopyBox(text: String, onCopy: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 6.dp).clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest).padding(start = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+            maxLines = 3,
+            modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+        )
+        TextButton(onClick = onCopy) { Text("Copiar") }
     }
 }
