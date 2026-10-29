@@ -7,6 +7,7 @@ object ApiRoutes {
     const val INFO = "/api/info"
     const val REGISTER = "/api/auth/register"
     const val LOGIN = "/api/auth/login"
+    const val PASSWORD = "/api/auth/password"
     const val SYNC = "/api/sync"
     const val EVENTS = "/api/events"
     const val TRANSACTIONS = "/api/transactions"
@@ -39,6 +40,9 @@ data class ServerInfo(
 
 @Serializable
 data class AuthRequest(val email: String, val password: String, val name: String? = null)
+
+@Serializable
+data class PasswordChange(val current: String, val new: String)
 
 @Serializable
 data class UserDto(val id: Long, val name: String, val email: String)

@@ -120,6 +120,12 @@ class Store(val file: File) {
 
     suspend fun userCount(): Long = query { Users.selectAll().count() }
 
+    suspend fun allUsers(): List<StoredUser> = query { Users.selectAll().map { it.toUser() } }
+
+    suspend fun setPassword(userId: Long, passwordHash: String) = query {
+        Users.update({ Users.id eq userId }) { it[Users.passwordHash] = passwordHash }
+    }
+
     // ---------- agenda ----------
 
     suspend fun upsertEvent(userId: Long, event: Event, now: Long): Event = query {

@@ -189,4 +189,27 @@ class ApiTest {
         assertEquals(listOf(1_800_000_000_000), synced.paid)
         assertEquals("Contas", synced.billCategory)
     }
+
+    @Test
+    fun changePasswordRequiresTheCurrentOne() = testApplication {
+        val client = setup()
+        val auth = client.register()
+        val wrong = client.post(ApiRoutes.PASSWORD) {
+            bearerAuth(auth.token)
+            contentType(ContentType.Application.Json)
+            setBody(dev.zentro.shared.PasswordChange("errada", "novaSenha123"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, wrong.status)
+        val ok = client.post(ApiRoutes.PASSWORD) {
+            bearerAuth(auth.token)
+            contentType(ContentType.Application.Json)
+            setBody(dev.zentro.shared.PasswordChange("segredo123", "novaSenha123"))
+        }
+        assertEquals(HttpStatusCode.NoContent, ok.status)
+        val login = client.post(ApiRoutes.LOGIN) {
+            contentType(ContentType.Application.Json)
+            setBody(AuthRequest("eu@zentro.dev", "novaSenha123"))
+        }
+        assertEquals(HttpStatusCode.OK, login.status)
+    }
 }

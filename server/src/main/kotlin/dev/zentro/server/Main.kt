@@ -45,6 +45,8 @@ object BuildInfo {
 object ServerControl {
     @Volatile var stop: ((Int) -> Unit)? = null
     @Volatile var backup: (() -> Unit)? = null
+    @Volatile var resetPassword: ((String) -> Unit)? = null
+    @Volatile var listAccounts: (() -> Unit)? = null
 
     fun exit(code: Int) {
         thread(name = "zentro-exit") { stop?.invoke(code) ?: exitProcess(code) }
@@ -72,15 +74,20 @@ fun main() {
         val reader = System.`in`.bufferedReader()
         while (true) {
             val line = runCatching { reader.readLine() }.getOrNull() ?: break
-            when (line.trim().lowercase()) {
+            val command = line.trim().substringBefore(' ').lowercase()
+            val argument = line.trim().substringAfter(' ', "").trim()
+            when (command) {
                 "stop", "end", "exit", "quit" -> {
                     log.info("Desligando...")
                     ServerControl.exit(0)
                 }
                 "status" -> log.info("Online · versão ${BuildInfo.VERSION} · porta ${config.port}")
                 "backup" -> ServerControl.backup?.invoke()
+                "contas" -> ServerControl.listAccounts?.invoke()
+                // Esqueceu a senha? "senha seu@email.com" cria uma senha temporária (só quem tem o console consegue).
+                "senha" -> if (argument.isBlank()) log.info("Use: senha seu@email.com") else ServerControl.resetPassword?.invoke(argument)
                 "" -> Unit
-                else -> log.info("Comandos: status, backup, stop")
+                else -> log.info("Comandos: status, contas, senha <e-mail>, backup, stop")
             }
         }
     }
@@ -105,6 +112,24 @@ fun Application.zentro(config: Config, store: Store = Store(File(config.dataDir,
     val releases = GitHubReleases(http, config.githubRepo)
     val backups = Backups(store, File(config.dataDir, "backups"))
     ServerControl.backup = { scope.launch { backups.backup("manual") } }
+    ServerControl.listAccounts = {
+        scope.launch {
+            val users = store.allUsers()
+            log.info(if (users.isEmpty()) "Nenhuma conta criada ainda." else "Contas: " + users.joinToString(", ") { it.email })
+        }
+    }
+    ServerControl.resetPassword = { email ->
+        scope.launch {
+            val user = store.userByEmail(email.trim().lowercase())
+            if (user == null) {
+                log.info("Nenhuma conta com o e-mail \"$email\". Digite \"contas\" para ver os e-mails cadastrados.")
+            } else {
+                val temporary = Store.randomKey(10)
+                store.setPassword(user.id, auth.hash(temporary))
+                log.info("Senha temporária de ${user.email}: $temporary  (entre no app e troque em Ajustes › Conta › Trocar senha)")
+            }
+        }
+    }
     val files = FileStore(File(config.dataDir, "files"))
     val ctx = AppContext(config, store, auth, hub, telegram, mercadoPago, releases, files, McpServer(store, files), scope)
 

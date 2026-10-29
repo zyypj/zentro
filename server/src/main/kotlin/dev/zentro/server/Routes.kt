@@ -13,6 +13,7 @@ import dev.zentro.shared.Event
 import dev.zentro.shared.MercadoPagoConnect
 import dev.zentro.shared.Note
 import dev.zentro.shared.Notes
+import dev.zentro.shared.PasswordChange
 import dev.zentro.shared.Person
 import dev.zentro.shared.ReviewRequest
 import dev.zentro.shared.Schedule
@@ -186,6 +187,21 @@ fun Route.apiRoutes(ctx: AppContext) {
             throw ApiException(HttpStatusCode.Unauthorized, "E-mail ou senha incorretos")
         }
         call.respond(AuthResponse(ctx.auth.issue(user.id), user.toDto()))
+    }
+
+    authenticate("jwt") {
+        post(ApiRoutes.PASSWORD) {
+            val userId = call.userId
+            val req = call.receive<PasswordChange>()
+            val user = store.user(userId) ?: throw ApiException(HttpStatusCode.Unauthorized, "Sessão inválida")
+            if (!ctx.auth.matches(req.current, user.passwordHash)) {
+                delay(600)
+                bad("Senha atual incorreta")
+            }
+            if (req.new.length < 6) bad("A nova senha precisa ter pelo menos 6 caracteres")
+            store.setPassword(userId, ctx.auth.hash(req.new))
+            call.respond(HttpStatusCode.NoContent)
+        }
     }
 
     post("/api/webhooks/mercadopago/{key}") {
