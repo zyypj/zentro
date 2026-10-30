@@ -50,6 +50,9 @@ kotlin {
                 implementation(libs.jna)
             }
         }
+        val desktopTest by getting {
+            dependencies { implementation(libs.kotlin.test) }
+        }
         if (androidEnabled) {
             androidMain.dependencies {
                 implementation(libs.androidx.activity.compose)
