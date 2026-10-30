@@ -18,10 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -56,6 +54,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.zentro.app.data.newId
+import dev.zentro.app.ui.ScrollableColumn
+import dev.zentro.app.ui.ScrollableLazyColumn
 import dev.zentro.app.ui.AdaptiveSheet
 import dev.zentro.app.ui.EmptyState
 import dev.zentro.app.ui.LocalWide
@@ -201,7 +201,7 @@ fun NotesScreen(
             when {
                 view == NotesView.TASKS && !wide -> TasksView(notes, onSave, onOpen = { openId = it.id }, Modifier.weight(1f))
                 view == NotesView.GRAPH && !wide -> NoteGraph(notes, onOpen = { openId = it.id }, Modifier.weight(1f).fillMaxWidth())
-                else -> LazyColumn(
+                else -> ScrollableLazyColumn(
                     Modifier.weight(1f),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -367,7 +367,7 @@ private fun Sidebar(
     onTag: (String) -> Unit,
     modifier: Modifier,
 ) {
-    Column(modifier.background(MaterialTheme.colorScheme.surfaceContainerLow).verticalScroll(rememberScrollState()).padding(12.dp)) {
+    ScrollableColumn(modifier.background(MaterialTheme.colorScheme.surfaceContainerLow), Modifier.padding(12.dp)) {
         val icons = mapOf(NotesView.ALL to ZIcons.Notes, NotesView.PINNED to Icons.Rounded.Star, NotesView.TASKS to Icons.Rounded.CheckCircle, NotesView.GRAPH to Icons.Rounded.Share)
         NotesView.entries.forEach { v ->
             SidebarItem(icons.getValue(v), v.label, selected = view == v && folder == null && tag == null) { onView(v) }
@@ -421,7 +421,7 @@ private fun TasksView(notes: List<Note>, onSave: (Note) -> Unit, onOpen: (Note) 
             .filter { it.second.isNotEmpty() }
             .sortedByDescending { it.first.updatedAt }
     }
-    LazyColumn(modifier, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp)) {
+    ScrollableLazyColumn(modifier, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp)) {
         item {
             Text(
                 "${groups.sumOf { it.second.size }} tarefa(s) aberta(s)",

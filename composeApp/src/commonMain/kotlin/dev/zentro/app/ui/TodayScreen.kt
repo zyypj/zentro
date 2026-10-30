@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -73,7 +72,7 @@ fun TodayScreen(
     }
     val firstName = data.session?.user?.name?.substringBefore(' ').orEmpty()
 
-    LazyColumn(
+    ScrollableLazyColumn(
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.widthIn(max = 760.dp),

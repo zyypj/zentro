@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -76,8 +74,9 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
     var changingPassword by remember { mutableStateOf(false) }
     val updateState by platform.updates.state.collectAsState()
 
-    Column(
-        Modifier.widthIn(max = 760.dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 24.dp, bottom = 48.dp),
+    ScrollableColumn(
+        Modifier.widthIn(max = 760.dp),
+        Modifier.padding(horizontal = 20.dp).padding(top = 24.dp, bottom = 48.dp),
     ) {
         Text("Ajustes", style = MaterialTheme.typography.headlineMedium)
 
