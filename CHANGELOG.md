@@ -2,6 +2,12 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.5.2] - 2026-10-30
+
+### Correções
+- **Windows:** abrir o Zentro pela busca, pelo atalho ou pelo menu Iniciar com ele já aberto (minimizado ou na bandeja) trazia uma segunda cópia. Agora a janela que já está aberta aparece na frente. A trava que impede duas cópias às vezes se soltava sozinha depois de um tempo; isso foi corrigido.
+- Clicar no ícone da bandeja também desminimiza a janela.
+
 ## [1.5.1] - 2026-10-29
 
 ### Novidades

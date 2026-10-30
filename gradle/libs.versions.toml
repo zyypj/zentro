@@ -1,5 +1,5 @@
 [versions]
-zentro = "1.5.1"
+zentro = "1.5.2"
 kotlin = "2.1.21"
 compose-multiplatform = "1.8.2"
 agp = "8.10.1"
