@@ -63,12 +63,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.awt.Dimension
 import java.awt.GraphicsEnvironment
 import java.io.File
-import java.io.RandomAccessFile
 import javax.swing.JOptionPane
 import kotlin.system.exitProcess
 
@@ -94,16 +94,15 @@ class ZentroIcon : Painter() {
     }
 }
 
-/** Garante uma única instância (duas rodando dispararia cada aviso duas vezes). */
-private fun acquireSingleInstance(dir: File): Boolean = runCatching {
-    val channel = RandomAccessFile(File(dir, "instance.lock"), "rw").channel
-    channel.tryLock() != null
-}.getOrDefault(true)
 
 fun main(args: Array<String>) {
     val dir = appDirectory()
-    if (!acquireSingleInstance(dir)) {
-        JOptionPane.showMessageDialog(null, "O Zentro já está aberto. Procure o ícone na bandeja do sistema.", "Zentro", JOptionPane.INFORMATION_MESSAGE)
+    if (!SingleInstance.acquire(dir)) {
+        // Já existe um Zentro aberto: pede para ele aparecer na tela e fecha esta cópia.
+        // Ao ligar o computador (--minimized) não mostra nada.
+        if ("--minimized" !in args && !SingleInstance.requestShow(dir)) {
+            JOptionPane.showMessageDialog(null, "O Zentro já está aberto. Procure o ícone na bandeja do sistema.", "Zentro", JOptionPane.INFORMATION_MESSAGE)
+        }
         exitProcess(0)
     }
 
@@ -115,8 +114,15 @@ fun main(args: Array<String>) {
     val visible = MutableStateFlow("--minimized" !in args)
     val minimized = MutableStateFlow(false)
     val trayMenuAt = MutableStateFlow<IntOffset?>(null)
+    // Pedidos para trazer a janela à frente (bandeja, segunda abertura pela busca do Windows...).
+    val showRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val show = {
+        visible.value = true
+        showRequests.tryEmit(Unit)
+    }
+    SingleInstance.listen(dir) { show() }
 
-    val tray = AppTray(onOpen = { visible.value = true }, onMenu = { x, y -> trayMenuAt.value = IntOffset(x, y) })
+    val tray = AppTray(onOpen = { show() }, onMenu = { x, y -> trayMenuAt.value = IntOffset(x, y) })
     val notifier = DesktopNotifier(repo, storage, systemNotify = tray::notify)
     val installer = DesktopInstaller(
         isHidden = { !visible.value },
@@ -173,6 +179,16 @@ fun main(args: Array<String>) {
                     repo.sync()
                 }
             }
+            LaunchedEffect(Unit) {
+                showRequests.collect {
+                    windowState.isMinimized = false
+                    // O Windows bloqueia "roubar o foco"; ficar por cima por um instante faz a janela vir para a frente.
+                    window.isAlwaysOnTop = true
+                    window.toFront()
+                    window.requestFocus()
+                    window.isAlwaysOnTop = false
+                }
+            }
             App(repo, platform)
         }
 
@@ -180,13 +196,13 @@ fun main(args: Array<String>) {
             TrayMenu(
                 at = at,
                 repo = repo,
-                onOpen = { visible.value = true },
+                onOpen = { show() },
                 onExit = quit,
                 onDismiss = { trayMenuAt.value = null },
             )
         }
-        Toasts(notifier, onOpen = { visible.value = true })
-        CriticalAlerts(notifier, alarm, scope, onOpen = { visible.value = true })
+        Toasts(notifier, onOpen = { show() })
+        CriticalAlerts(notifier, alarm, scope, onOpen = { show() })
     }
     exitProcess(0)
 }
