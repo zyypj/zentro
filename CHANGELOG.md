@@ -2,6 +2,13 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.5.3] - 2026-10-30
+
+### Novidades
+- **Buscar e substituir nas notas:** Ctrl+F abre a busca e Ctrl+R (ou Ctrl+H) a troca. Enter vai para a próxima ocorrência, Shift+Enter volta e Esc fecha. Todas as ocorrências ficam marcadas, com a contagem ("3 de 12"). Dá para trocar uma por vez ou todas de uma vez. No celular, use a lupa no topo da nota.
+- **Números de linha** à esquerda do editor de notas no PC, com a linha do cursor em destaque.
+- **Barra de rolagem arrastável** no PC: nas notas, no editor, em Hoje, Agenda, Finanças e Ajustes. Não é mais preciso depender só da rodinha do mouse.
+
 ## [1.5.2] - 2026-10-30
 
 ### Correções
