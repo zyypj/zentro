@@ -2,6 +2,7 @@ package dev.zentro.app.ui.notes
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,11 +22,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -51,7 +52,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -66,10 +83,12 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.zentro.app.ui.LocalWide
+import dev.zentro.app.ui.ScrollableColumn
 import dev.zentro.app.ui.ZColors
 import dev.zentro.app.ui.ZIcons
 import dev.zentro.shared.Note
 import dev.zentro.shared.Notes
+import dev.zentro.shared.TextSearch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -103,6 +122,24 @@ fun NoteEditor(
     var pickingFolder by remember { mutableStateOf(false) }
     var pickingIcon by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+
+    // ---------- rolagem, números de linha e buscar/substituir ----------
+    val editorScroll = rememberScrollState()
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var fieldTop by remember { mutableStateOf(0f) }
+    var viewportTop by remember { mutableStateOf(0f) }
+    var viewportHeight by remember { mutableStateOf(0f) }
+    var findOpen by remember { mutableStateOf(false) }
+    var replaceOpen by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var replacement by remember { mutableStateOf("") }
+    var matchIndex by remember { mutableStateOf(0) }
+    var findStatus by remember { mutableStateOf<String?>(null) }
+    var findFocusTick by remember { mutableStateOf(0) }
+    val findFocus = remember { FocusRequester() }
+    val rootFocus = remember { FocusRequester() }
+    val matches = remember(content.text, query) { TextSearch.matches(content.text, query) }
+    val shownMatch = if (matches.isEmpty()) -1 else matchIndex.coerceIn(0, matches.lastIndex)
 
     val current = note.copy(title = title.trim(), content = content.text, folder = folder, icon = icon, pinned = pinned)
     val latest by rememberUpdatedState(current)
@@ -140,7 +177,86 @@ fun NoteEditor(
         content = TextFieldValue(newText, TextRange(start + target.length + 4))
     }
 
-    Column(Modifier.fillMaxSize()) {
+    /** Rola a nota até o trecho em [offset], se ele estiver fora da tela. */
+    fun reveal(offset: Int) {
+        val layout = textLayout ?: return
+        if (offset > layout.layoutInput.text.length) return
+        val y = fieldTop + layout.getLineTop(layout.getLineForOffset(offset)) - viewportTop
+        if (y < 0f || y > viewportHeight - 80f) {
+            scope.launch {
+                editorScroll.animateScrollTo((editorScroll.value + y - viewportHeight / 3).toInt().coerceIn(0, editorScroll.maxValue))
+            }
+        }
+    }
+
+    fun selectMatch(text: String, found: List<IntRange>, index: Int) {
+        if (found.isEmpty()) return
+        val i = ((index % found.size) + found.size) % found.size
+        matchIndex = i
+        content = TextFieldValue(text, TextRange(found[i].first, found[i].last + 1))
+        reveal(found[i].first)
+    }
+
+    fun openFind(withReplace: Boolean) {
+        val sel = content.selection
+        if (!sel.collapsed) {
+            val picked = content.text.substring(sel.min, sel.max)
+            if (picked.isNotBlank() && '\n' !in picked) query = picked.take(200)
+        }
+        editing = true
+        findOpen = true
+        if (withReplace) replaceOpen = true
+        findStatus = null
+        findFocusTick++
+    }
+
+    fun closeFind() {
+        findOpen = false
+        replaceOpen = false
+        findStatus = null
+    }
+
+    fun replaceCurrent() {
+        val range = matches.getOrNull(shownMatch) ?: return
+        val (text, cursor) = TextSearch.replaceOne(content.text, range, replacement)
+        val next = TextSearch.matches(text, query)
+        content = TextFieldValue(text, TextRange(cursor))
+        findStatus = null
+        if (next.isNotEmpty()) selectMatch(text, next, TextSearch.nearest(next, cursor))
+    }
+
+    fun replaceEverything() {
+        val (text, count) = TextSearch.replaceAll(content.text, query, replacement)
+        if (count == 0) return
+        content = TextFieldValue(text, TextRange(content.selection.min.coerceAtMost(text.length)))
+        findStatus = if (count == 1) "1 trocada" else "$count trocadas"
+    }
+
+    // Ao digitar a busca, pula para a ocorrência mais perto do cursor.
+    LaunchedEffect(query) {
+        findStatus = null
+        if (findOpen && matches.isNotEmpty()) selectMatch(content.text, matches, TextSearch.nearest(matches, content.selection.min))
+    }
+    LaunchedEffect(findFocusTick) {
+        if (findFocusTick > 0) runCatching { findFocus.requestFocus() }
+    }
+    // Lendo a nota (sem foco em nenhum campo), os atalhos ainda precisam chegar aqui.
+    LaunchedEffect(note.id) {
+        if (!editing) runCatching { rootFocus.requestFocus() }
+    }
+
+    Column(
+        Modifier.fillMaxSize().focusRequester(rootFocus).focusable().onPreviewKeyEvent { e ->
+            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            val ctrl = e.isCtrlPressed || e.isMetaPressed
+            when {
+                ctrl && e.key == Key.F -> { openFind(withReplace = false); true }
+                ctrl && (e.key == Key.R || e.key == Key.H) -> { openFind(withReplace = true); true }
+                e.key == Key.Escape && findOpen -> { closeFind(); true }
+                else -> false
+            }
+        },
+    ) {
         // ---------- barra superior ----------
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (onBack != null) {
@@ -156,6 +272,13 @@ fun NoteEditor(
                 modifier = Modifier.clip(MaterialTheme.shapes.small).clickable { pickingFolder = true }.padding(horizontal = 8.dp, vertical = 6.dp),
             )
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = { if (findOpen) closeFind() else openFind(withReplace = false) }) {
+                Icon(
+                    Icons.Rounded.Search,
+                    "Buscar na nota (Ctrl+F)",
+                    tint = if (findOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             IconButton(onClick = { pinned = !pinned }) {
                 Icon(Icons.Rounded.Star, if (pinned) "Desafixar" else "Fixar", tint = if (pinned) ZColors.Warning else MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -167,9 +290,34 @@ fun NoteEditor(
             }
         }
 
-        Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).imePadding()
-                .padding(horizontal = if (LocalWide.current) 40.dp else 20.dp),
+        if (findOpen) {
+            FindBar(
+                query = query,
+                onQuery = { query = it },
+                replacement = replacement,
+                onReplacement = { replacement = it },
+                replaceOpen = replaceOpen,
+                onToggleReplace = { replaceOpen = !replaceOpen },
+                position = shownMatch,
+                total = matches.size,
+                status = findStatus,
+                onNext = { selectMatch(content.text, matches, shownMatch + 1) },
+                onPrev = { selectMatch(content.text, matches, shownMatch - 1) },
+                onReplace = ::replaceCurrent,
+                onReplaceAll = ::replaceEverything,
+                onClose = ::closeFind,
+                focusRequester = findFocus,
+            )
+        }
+
+        val wide = LocalWide.current
+        ScrollableColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth().onGloballyPositioned {
+                viewportTop = it.positionInWindow().y
+                viewportHeight = it.size.height.toFloat()
+            },
+            contentModifier = Modifier.imePadding().padding(horizontal = if (wide) 40.dp else 20.dp),
+            state = editorScroll,
         ) {
             Box(Modifier.widthIn(max = 820.dp)) {
                 Column {
@@ -239,13 +387,77 @@ fun NoteEditor(
                                 }
                             }
                         }
+                        // Números de linha à esquerda (no PC). Cada linha do texto conta uma vez,
+                        // mesmo quando quebra em várias na tela, como nos editores de código.
+                        val gutter = if (wide) 44.dp else 0.dp
+                        val measurer = rememberTextMeasurer()
+                        val cursorLine = remember(content.text, content.selection.start) {
+                            content.text.take(content.selection.start).count { it == '\n' }
+                        }
+                        val numberStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        val numberColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        val currentColor = MaterialTheme.colorScheme.primary
+                        val ruleColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        val strongMark = ZColors.Warning.copy(alpha = 0.55f)
+                        val weakMark = ZColors.Warning.copy(alpha = 0.22f)
+                        val highlight = remember(findOpen, matches, shownMatch, strongMark, weakMark) {
+                            if (!findOpen || matches.isEmpty()) {
+                                VisualTransformation.None
+                            } else {
+                                VisualTransformation { text ->
+                                    val marked = buildAnnotatedString {
+                                        append(text)
+                                        matches.forEachIndexed { i, r ->
+                                            if (r.last < text.length) {
+                                                addStyle(SpanStyle(background = if (i == shownMatch) strongMark else weakMark), r.first, r.last + 1)
+                                            }
+                                        }
+                                    }
+                                    TransformedText(marked, OffsetMapping.Identity)
+                                }
+                            }
+                        }
+                        val topPad = 8.dp
                         BasicTextField(
                             value = content,
                             onValueChange = { content = it },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, lineHeight = 26.sp),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 320.dp).padding(top = 8.dp).onPreviewKeyEvent { event ->
+                            visualTransformation = highlight,
+                            onTextLayout = { textLayout = it },
+                            modifier = Modifier.fillMaxWidth().drawBehind {
+                                val layout = textLayout ?: return@drawBehind
+                                if (gutter.value <= 0f) return@drawBehind
+                                val gutterPx = gutter.toPx()
+                                val top = topPad.toPx()
+                                drawLine(ruleColor, Offset(gutterPx - 8.dp.toPx(), top), Offset(gutterPx - 8.dp.toPx(), size.height), strokeWidth = 1f)
+                                val text = layout.layoutInput.text.text
+                                var start = 0
+                                var line = 0
+                                while (true) {
+                                    val visual = layout.getLineForOffset(start)
+                                    val lineTop = layout.getLineTop(visual)
+                                    val lineHeight = layout.getLineBottom(visual) - lineTop
+                                    val number = measurer.measure(
+                                        (line + 1).toString(),
+                                        numberStyle.copy(color = if (line == cursorLine) currentColor else numberColor),
+                                    )
+                                    drawText(
+                                        number,
+                                        topLeft = Offset(
+                                            gutterPx - 16.dp.toPx() - number.size.width,
+                                            top + lineTop + (lineHeight - number.size.height) / 2,
+                                        ),
+                                    )
+                                    val next = text.indexOf('\n', start)
+                                    if (next < 0) break
+                                    start = next + 1
+                                    line++
+                                }
+                            }.heightIn(min = 320.dp).padding(start = gutter, top = topPad).onGloballyPositioned {
+                                fieldTop = it.positionInWindow().y
+                            }.onPreviewKeyEvent { event ->
                                 // Ctrl+V com uma imagem copiada (ex.: um print): envia e insere na nota.
                                 val paste = event.type == KeyEventType.KeyDown && event.key == Key.V && (event.isCtrlPressed || event.isMetaPressed)
                                 if (paste && media.hasClipboardImage()) {
