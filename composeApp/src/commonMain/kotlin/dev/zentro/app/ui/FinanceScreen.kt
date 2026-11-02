@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -35,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.zentro.shared.Bills
 import dev.zentro.shared.Cards
 import dev.zentro.shared.CreditCard
@@ -54,6 +56,7 @@ import kotlinx.datetime.plus
 
 @Composable
 fun FinanceScreen(
+    onNewTransaction: () -> Unit,
     transactions: List<Transaction>,
     events: List<Event>,
     tz: TimeZone,
@@ -92,50 +95,40 @@ fun FinanceScreen(
 
     val summary = @Composable { Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(Format.monthYear(month), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            IconButton(onClick = { month = month.minus(1, DateTimeUnit.MONTH) }) {
-                Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Mês anterior")
-            }
-            IconButton(onClick = { month = month.plus(1, DateTimeUnit.MONTH) }) {
-                Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Próximo mês")
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        ZCard(color = MaterialTheme.colorScheme.primaryContainer) {
-            val onCard = MaterialTheme.colorScheme.onPrimaryContainer
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    when {
-                        month == thisMonth -> "Saldo"
-                        month < thisMonth -> "Saldo no fim de ${Format.monthName(month.month)}"
-                        else -> "Saldo previsto"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = onCard.copy(alpha = 0.8f),
-                    modifier = Modifier.weight(1f),
-                )
-                if (month == thisMonth) {
-                    androidx.compose.material3.TextButton(onClick = { adjusting = true }) { Text("Ajustar", color = onCard) }
-                }
-            }
-            Text(
-                Format.money(summaryMonth.closing),
-                style = MaterialTheme.typography.displaySmall.merge(MoneyStyle),
-                color = onCard,
-            )
-            Text(
-                "${Format.money(summaryMonth.opening)} do mês anterior  ·  ${Format.money(summaryMonth.result, signed = true)} neste mês",
-                style = MaterialTheme.typography.bodySmall,
-                color = onCard.copy(alpha = 0.75f),
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Totals("Entradas", income, ZColors.Income, ZIcons.TrendingUp, Modifier.weight(1f))
-                Totals("Saídas", expense, ZColors.Expense, ZIcons.TrendingDown, Modifier.weight(1f))
-            }
+            ZText(Format.monthYear(month), 17.sp, 700, tracking = -0.02, modifier = Modifier.weight(1f))
+            MonthArrow(Line.ChevronLeft, "Mês anterior") { month = month.minus(1, DateTimeUnit.MONTH) }
+            MonthArrow(Line.ChevronRight, "Próximo mês") { month = month.plus(1, DateTimeUnit.MONTH) }
         }
         Spacer(Modifier.height(12.dp))
-        QuickAddField("Ex.: 45,90 almoço  ·  +1200 salário", onQuickAdd)
+        Panel(Modifier.fillMaxWidth(), padding = 20.dp) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ZText(
+                        when {
+                            month == thisMonth -> "Saldo atual"
+                            month < thisMonth -> "Saldo no fim de ${Format.monthName(month.month)}"
+                            else -> "Saldo previsto"
+                        },
+                        11.5.sp, 400, ZPalette.Muted, Modifier.weight(1f),
+                    )
+                    if (month == thisMonth) LinkAction("Ajustar", { adjusting = true })
+                }
+                Spacer(Modifier.height(6.dp))
+                ZText(
+                    Format.money(summaryMonth.closing), 32.sp, 700,
+                    if (summaryMonth.closing < 0) ZColors.Expense else ZPalette.Ink, tracking = -0.045, tabular = true, maxLines = 1,
+                )
+                Spacer(Modifier.height(4.dp))
+                ZText(
+                    "${Format.money(summaryMonth.opening)} do mês anterior  ·  ${Format.money(summaryMonth.result, signed = true)} neste mês",
+                    11.sp, 400, ZPalette.Quiet,
+                )
+                Spacer(Modifier.height(18.dp))
+                MoneyPair(income, expense)
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        QuickCapture("Ex.: 45,90 almoço  ·  +1200 salário", onQuickAdd)
         BillsSection(bills, tz, now, onOpenBill, onTogglePaid, onNewBill)
         CardsSection(cards, transactions, tz, now, onOpenCard, onNewCard, onPayInvoice)
         if (byCategory.isNotEmpty()) {
@@ -176,16 +169,35 @@ fun FinanceScreen(
     }
 
     if (LocalWide.current) {
-        Row(Modifier.padding(24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Column(Modifier.weight(1f).widthIn(max = 480.dp)) { summary() }
-            list(Modifier.weight(1f).fillMaxHeight(), false)
+        Row(Modifier.fillMaxSize()) {
+            ScrollableColumn(
+                Modifier.weight(1f).widthIn(max = 560.dp).fillMaxHeight(),
+                Modifier.padding(start = 48.dp, end = 24.dp, top = 32.dp, bottom = 40.dp),
+            ) { summary() }
+            Column(Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp, end = 40.dp, top = 30.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
+                    ZText("Movimentações", 17.sp, 700, tracking = -0.02, modifier = Modifier.weight(1f))
+                    PrimaryAction("Nova", onNewTransaction)
+                }
+                list(Modifier.weight(1f), false)
+            }
         }
     } else {
-        list(Modifier.padding(horizontal = 20.dp).padding(top = 16.dp), true)
+        Column(Modifier.fillMaxSize()) {
+            MobileHeader("Finanças") { SquarePlus(onNewTransaction, "Nova movimentação") }
+            list(Modifier.padding(horizontal = 18.dp).weight(1f), true)
+        }
     }
 
     if (adjusting) {
         AdjustBalanceDialog(remember(transactions) { Finance.balanceAt(transactions, now + 1) }, onAdjustBalance) { adjusting = false }
+    }
+}
+
+@Composable
+private fun MonthArrow(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit) {
+    Box(Modifier.size(32.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, description, tint = ZPalette.Muted, modifier = Modifier.size(16.dp))
     }
 }
 
