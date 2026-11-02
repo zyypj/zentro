@@ -51,17 +51,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun ZentroLogo(size: Int = 64) {
-    Box(
-        Modifier.size(size.dp).clip(RoundedCornerShape((size * 0.3).dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF8B7CF6), Color(0xFF5B4BDB)))),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("Z", color = Color.White, fontWeight = FontWeight.Black, fontSize = (size * 0.5).sp)
-    }
-}
-
-@Composable
 fun LoginScreen(repo: Repository) {
     val scope = rememberCoroutineScope()
     var server by remember { mutableStateOf("") }
