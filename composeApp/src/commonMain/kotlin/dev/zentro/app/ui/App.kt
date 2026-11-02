@@ -46,6 +46,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import dev.zentro.app.Platform
 import dev.zentro.app.ui.notes.NoteMedia
 import dev.zentro.app.ui.notes.NotesScreen
@@ -55,6 +68,8 @@ import dev.zentro.app.data.SyncStatus
 import dev.zentro.app.data.UpdateState
 import dev.zentro.app.data.newId
 import dev.zentro.shared.Event
+import dev.zentro.shared.Note
+import dev.zentro.shared.Notes
 import dev.zentro.shared.Format
 import dev.zentro.shared.Person
 import dev.zentro.shared.QuickInput
@@ -68,11 +83,11 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 
 enum class Tab(val label: String, val icon: ImageVector) {
-    TODAY("Hoje", Icons.Rounded.Home),
-    AGENDA("Agenda", Icons.Rounded.DateRange),
-    NOTES("Notas", ZIcons.Notes),
-    FINANCE("Finanças", ZIcons.Wallet),
-    SETTINGS("Ajustes", Icons.Rounded.Settings),
+    TODAY("Hoje", Line.Home),
+    AGENDA("Agenda", Line.Calendar),
+    NOTES("Notas", Line.Note),
+    FINANCE("Finanças", Line.Wallet),
+    SETTINGS("Ajustes", Line.Settings),
 }
 
 @Composable
@@ -103,6 +118,14 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
     var editingTx by remember { mutableStateOf<TxEditRequest?>(null) }
     var editingCard by remember { mutableStateOf<CardEditRequest?>(null) }
     var openCardId by remember { mutableStateOf<String?>(null) }
+    var notesFolder by remember { mutableStateOf<String?>(null) }
+    var openNoteId by remember { mutableStateOf<String?>(null) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var bellOpen by remember { mutableStateOf(false) }
+    var newFolder by remember { mutableStateOf(false) }
+    val alerts = remember(data, now) { buildAlerts(data, tz, now) }
+    val hasNews = alerts.any { !it.info }
+    val appFocus = remember { FocusRequester() }
     var agendaFilter by remember { mutableStateOf<String?>(null) }
     val updateState by platform.updates.state.collectAsState()
     val restoreOffer by repo.restoreOffer.collectAsState()
@@ -194,18 +217,77 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
         return true
     }
 
-    val fab: @Composable () -> Unit = {
-        when (tab) {
-            Tab.TODAY, Tab.AGENDA -> ExtendedFloatingActionButton(
-                onClick = {
-                    val personId = agendaFilter?.takeIf { tab == Tab.AGENDA && it != AGENDA_MINE }
-                    editingEvent = EventEditRequest(null, if (tab == Tab.AGENDA) selectedDay else Schedule.today(tz), personId = personId)
-                },
-                icon = { Icon(Icons.Rounded.Add, null) },
-                text = { Text("Compromisso") },
-            )
-            Tab.FINANCE -> FloatingActionButton(onClick = { editingTx = TxEditRequest(null) }) { Icon(Icons.Rounded.Add, "Nova movimentação") }
-            Tab.SETTINGS, Tab.NOTES -> Unit
+    fun newNote(text: String = "", folder: String? = null, open: Boolean = true): Note {
+        val title = text.lineSequence().firstOrNull().orEmpty().take(80).trim()
+        val note = Note(
+            id = newId(),
+            title = title,
+            content = if (text.trim().length > title.length) text.trim() else "",
+            folder = folder ?: notesFolder ?: Notes.DEFAULT_FOLDER,
+            createdAt = Schedule.now(),
+        )
+        repo.saveNote(note)
+        if (open) {
+            openNoteId = note.id
+            tab = Tab.NOTES
+        }
+        return note
+    }
+
+    /** Captura rápida: valor vira movimentação, dia/hora vira compromisso e o resto vira anotação. */
+    fun quickCapture(text: String): Boolean = when (QuickInput.classify(text, Schedule.today(tz))) {
+        QuickInput.Kind.TRANSACTION -> quickTransaction(text)
+        QuickInput.Kind.EVENT -> quickEvent(text)
+        QuickInput.Kind.NOTE -> {
+            val note = newNote(text, folder = Notes.DEFAULT_FOLDER, open = false)
+            message("Anotação \"${note.title}\" salva em ${note.folder}")
+            true
+        }
+    }
+
+    fun newItem(item: NewItem) {
+        val today = Schedule.today(tz)
+        when (item) {
+            NewItem.EVENT -> editingEvent = EventEditRequest(null, if (tab == Tab.AGENDA) selectedDay else today)
+            NewItem.BILL -> editingEvent = EventEditRequest(null, today, billAmountCents = 0, recurrence = Recurrence.MONTHLY)
+            NewItem.NOTE -> newNote()
+            NewItem.TRANSACTION -> editingTx = TxEditRequest(null)
+            NewItem.CARD_PURCHASE -> editingTx = TxEditRequest(null, cardId = data.activeCards.firstOrNull()?.id)
+        }
+    }
+
+    fun openAlert(target: AlertTarget) {
+        when (target) {
+            AlertTarget.Finance -> tab = Tab.FINANCE
+            is AlertTarget.Card -> {
+                tab = Tab.FINANCE
+                openCardId = target.cardId
+            }
+            AlertTarget.Review -> tab = Tab.TODAY
+            is AlertTarget.EventAt -> editingEvent = EventEditRequest(target.event, target.date)
+        }
+    }
+
+    fun openHit(hit: SearchHit) {
+        when (hit) {
+            is SearchHit.EventHit -> editingEvent = EventEditRequest(hit.event, Schedule.toLocal(hit.event.startAt, tz).date)
+            is SearchHit.NoteHit -> {
+                tab = Tab.NOTES
+                notesFolder = null
+                openNoteId = hit.note.id
+            }
+            is SearchHit.TxHit -> editingTx = TxEditRequest(hit.tx)
+            is SearchHit.CardHit -> {
+                tab = Tab.FINANCE
+                openCardId = hit.card.id
+            }
+        }
+    }
+
+    val bell: @Composable () -> Unit = {
+        Box {
+            BellButton(hasNews, { bellOpen = true })
+            AlertsMenu(bellOpen, alerts, { bellOpen = false }, ::openAlert)
         }
     }
 
@@ -226,16 +308,32 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                         data = data,
                         tz = tz,
                         now = now,
-                        onQuickEvent = ::quickEvent,
+                        onCapture = ::quickCapture,
                         onOpenEvent = { e, d, t -> editingEvent = EventEditRequest(e, d, t) },
                         onReviewed = {
                             repo.markReviewed()
                             message("Agenda de hoje confirmada ✓")
                         },
+                        onOpenAgenda = { day ->
+                            if (day != null) selectedDay = day
+                            tab = Tab.AGENDA
+                        },
                         onOpenFinance = { tab = Tab.FINANCE },
+                        onOpenNotes = {
+                            notesFolder = null
+                            tab = Tab.NOTES
+                        },
+                        onOpenNote = {
+                            openNoteId = it.id
+                            tab = Tab.NOTES
+                        },
+                        onNewNote = { newNote() },
                         onTogglePaid = ::togglePaid,
+                        bell = bell,
+                        onSearch = { searchOpen = true },
                     )
                     Tab.AGENDA -> AgendaScreen(
+                        onNew = { editingEvent = EventEditRequest(null, selectedDay) },
                         allEvents = data.activeEvents,
                         people = data.activePeople,
                         filter = agendaFilter,
@@ -248,6 +346,10 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                         onTogglePaid = ::togglePaid,
                     )
                     Tab.NOTES -> NotesScreen(
+                        folder = notesFolder,
+                        onFolder = { notesFolder = it },
+                        openId = openNoteId,
+                        onOpenId = { openNoteId = it },
                         notes = data.activeNotes,
                         tz = tz,
                         now = now,
@@ -257,6 +359,7 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                         media = noteMedia,
                     )
                     Tab.FINANCE -> FinanceScreen(
+                        onNewTransaction = { editingTx = TxEditRequest(null) },
                         transactions = data.activeTransactions,
                         events = data.activeEvents,
                         tz = tz,
@@ -284,53 +387,85 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val folders = remember(data.notes) {
+        val notes = data.activeNotes
+        Notes.folders(notes).filter { '/' !in it }.map { f -> f to notes.count { Notes.inFolder(it, f) } }
+    }
+    val pending = data.outbox.size
+    val userName = data.session?.user?.name.orEmpty()
+
+    BoxWithConstraints(
+        Modifier.fillMaxSize().focusRequester(appFocus).focusable().onPreviewKeyEvent { e ->
+            val ctrl = e.isCtrlPressed || e.isMetaPressed
+            if (e.type == KeyEventType.KeyDown && ctrl && e.key == Key.K) {
+                searchOpen = true
+                true
+            } else {
+                false
+            }
+        },
+    ) {
+        LaunchedEffect(Unit) { runCatching { appFocus.requestFocus() } }
         val wide = maxWidth >= 840.dp
         CompositionLocalProvider(LocalWide provides wide) {
             if (wide) {
-                Row(Modifier.fillMaxSize()) {
-                    NavigationRail(
-                        header = {
-                            Spacer(Modifier.height(12.dp))
-                            ZentroLogo(40)
-                            Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxSize().background(ZPalette.Background)) {
+                    DesktopSidebar(
+                        tab = tab,
+                        onTab = {
+                            tab = it
+                            if (it == Tab.NOTES) notesFolder = null
                         },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxHeight(),
-                    ) {
-                        Tab.entries.forEach { t ->
-                            NavigationRailItem(
-                                selected = tab == t,
-                                onClick = { tab = t },
-                                icon = { Icon(t.icon, null) },
-                                label = { Text(t.label) },
-                            )
-                        }
-                    }
+                        counts = mapOf(Tab.AGENDA to Schedule.agendaFor(data.activeEvents, Schedule.today(tz, now), tz).size),
+                        folders = folders,
+                        selectedFolder = notesFolder,
+                        onFolder = {
+                            notesFolder = it
+                            openNoteId = null
+                            tab = Tab.NOTES
+                        },
+                        onNewFolder = { newFolder = true },
+                        version = dev.zentro.shared.BuildVersion.CURRENT,
+                        status = status,
+                        pending = pending,
+                        userName = userName,
+                        onProfile = { tab = Tab.SETTINGS },
+                    )
                     Scaffold(
                         snackbarHost = { SnackbarHost(snackbar) },
-                        floatingActionButton = fab,
-                        containerColor = MaterialTheme.colorScheme.background,
+                        containerColor = ZPalette.Background,
+                        topBar = {
+                            DesktopToolbar(
+                                crumbs = listOfNotNull("Meu espaço", tab.label, notesFolder?.takeIf { tab == Tab.NOTES }),
+                                onSearch = { searchOpen = true },
+                                hasNews = hasNews,
+                                onBell = { bellOpen = true },
+                                bellPopup = { AlertsMenu(bellOpen, alerts, { bellOpen = false }, ::openAlert) },
+                                onNewItem = ::newItem,
+                                canAddCardPurchase = data.activeCards.isNotEmpty(),
+                            )
+                        },
                     ) { padding -> Box(Modifier.padding(padding)) { content() } }
                 }
             } else {
                 Scaffold(
                     snackbarHost = { SnackbarHost(snackbar) },
-                    floatingActionButton = fab,
-                    containerColor = MaterialTheme.colorScheme.background,
-                    bottomBar = {
-                        NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
-                            Tab.entries.forEach { t ->
-                                NavigationBarItem(
-                                    selected = tab == t,
-                                    onClick = { tab = t },
-                                    icon = { Icon(t.icon, null) },
-                                    label = { Text(t.label) },
-                                )
-                            }
-                        }
+                    containerColor = ZPalette.Background,
+                    bottomBar = { MobileTabBar(tab) { tab = it } },
+                ) { padding -> Box(Modifier.padding(padding).statusBarsPadding()) { content() } }
+            }
+
+            if (searchOpen) SearchDialog(data, tz, { searchOpen = false }, ::openHit)
+            if (newFolder) {
+                NewFolderDialog(
+                    onCreate = { name ->
+                        newFolder = false
+                        notesFolder = name
+                        newNote(folder = name)
+                        message("Pasta \"$name\" criada com uma nota nova")
                     },
-                ) { padding -> Box(Modifier.padding(padding)) { content() } }
+                    onDismiss = { newFolder = false },
+                )
             }
 
             editingEvent?.let { req ->
@@ -461,4 +596,35 @@ private fun UpdateBanner(state: UpdateState, canInstall: Boolean, background: Bo
             }
         }
     }
+}
+
+/** Pede o nome de uma pasta nova; ela passa a existir com a primeira nota dentro. */
+@Composable
+private fun NewFolderDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nova pasta") },
+        text = {
+            Column {
+                Text(
+                    "Use \"/\" para subpastas (ex.: Faculdade/Cálculo). A pasta é criada com uma nota nova dentro.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.replace("\n", "") },
+                    label = { Text("Nome da pasta") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = name.isNotBlank(), onClick = { onCreate(name.trim().trim('/')) }) { Text("Criar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
 }
