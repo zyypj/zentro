@@ -2,6 +2,11 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Melhorado
+- **Menos memória no PC:** o Zentro usa bem menos RAM. A JVM agora tem limite de memória e devolve ao sistema o que não está usando, e na bandeja a janela é fechada de verdade. Ao abrir de novo, ela volta na mesma aba e na mesma nota.
+
 ## [2.0.0] - 2026-11-02
 
 ### Visual novo
