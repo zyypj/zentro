@@ -15,6 +15,8 @@ import dev.zentro.shared.Note
 import dev.zentro.shared.Notes
 import dev.zentro.shared.PasswordChange
 import dev.zentro.shared.Person
+import dev.zentro.shared.CreditCard
+import dev.zentro.shared.Cards
 import dev.zentro.shared.ReviewRequest
 import dev.zentro.shared.Schedule
 import dev.zentro.shared.ServerInfo
@@ -101,7 +103,22 @@ private fun Transaction.validated(pathId: String): Transaction {
     if (id != pathId) bad("Id do corpo diferente da URL")
     if (amountCents <= 0) bad("Informe um valor maior que zero")
     if (amountCents > 100_000_000_000L) bad("Valor alto demais")
-    return copy(description = description.trim().take(300).ifEmpty { category }, category = category.trim().take(60))
+    return copy(
+        description = description.trim().take(300).ifEmpty { category },
+        category = category.trim().take(60),
+        cardId = cardId?.take(64),
+        installments = if (cardId == null) 1 else installments.coerceIn(1, Cards.MAX_INSTALLMENTS),
+        invoiceKey = invoiceKey?.take(100),
+    )
+}
+
+private fun CreditCard.validated(pathId: String): CreditCard {
+    if (id != pathId) bad("Id do corpo diferente da URL")
+    val clean = name.trim()
+    if (clean.isEmpty()) bad("Informe o nome do cartão")
+    if (closingDay !in 1..31 || dueDay !in 1..31) bad("Dia de fechamento e vencimento vão de 1 a 31")
+    if ((limitCents ?: 0) < 0) bad("Limite inválido")
+    return copy(name = clean.take(80))
 }
 
 private fun Person.validated(pathId: String): Person {
@@ -227,6 +244,7 @@ fun Route.apiRoutes(ctx: AppContext) {
                     settings = store.settings(userId).public,
                     people = store.peopleSince(userId, since),
                     notes = store.notesSince(userId, since),
+                    cards = store.cardsSince(userId, since),
                 ),
             )
         }
@@ -274,6 +292,20 @@ fun Route.apiRoutes(ctx: AppContext) {
         delete("${ApiRoutes.PEOPLE}/{id}") {
             val userId = call.userId
             store.deletePerson(userId, call.pathId(), Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(HttpStatusCode.NoContent)
+        }
+
+        put("${ApiRoutes.CARDS}/{id}") {
+            val userId = call.userId
+            val saved = store.upsertCard(userId, call.receive<CreditCard>().validated(call.pathId()), Schedule.now())
+            ctx.hub.notify(userId)
+            call.respond(saved)
+        }
+
+        delete("${ApiRoutes.CARDS}/{id}") {
+            val userId = call.userId
+            store.deleteCard(userId, call.pathId(), Schedule.now())
             ctx.hub.notify(userId)
             call.respond(HttpStatusCode.NoContent)
         }

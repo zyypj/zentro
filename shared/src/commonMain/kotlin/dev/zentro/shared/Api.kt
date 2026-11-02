@@ -20,6 +20,7 @@ object ApiRoutes {
     const val LIVE = "/api/live"
     const val PEOPLE = "/api/people"
     const val NOTES = "/api/notes"
+    const val CARDS = "/api/cards"
     const val UPDATE = "/api/update"
     const val FILES = "/api/files"
     const val AI_LINK = "/api/ai/link"
@@ -62,6 +63,7 @@ data class SyncResponse(
     val settings: UserSettings,
     val people: List<Person> = emptyList(),
     val notes: List<Note> = emptyList(),
+    val cards: List<CreditCard> = emptyList(),
 )
 
 @Serializable

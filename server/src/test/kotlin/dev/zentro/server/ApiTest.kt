@@ -4,6 +4,7 @@ import dev.zentro.server.db.Store
 import dev.zentro.shared.ApiRoutes
 import dev.zentro.shared.AuthRequest
 import dev.zentro.shared.AuthResponse
+import dev.zentro.shared.CreditCard
 import dev.zentro.shared.Event
 import dev.zentro.shared.Note
 import dev.zentro.shared.Person
@@ -172,6 +173,47 @@ class ApiTest {
         client.delete("${ApiRoutes.NOTES}/n1") { bearerAuth(auth.token) }
         val after = client.get("${ApiRoutes.SYNC}?since=${sync.serverTime}") { bearerAuth(auth.token) }.body<SyncResponse>()
         assertTrue(after.notes.single().deleted)
+    }
+
+    @Test
+    fun cardsAndCardPurchasesSync() = testApplication {
+        val client = setup()
+        val token = client.register().token
+        val card = CreditCard(id = "c1", name = "  Nubank ", closingDay = 3, dueDay = 10, limitCents = 500_000)
+        assertEquals(HttpStatusCode.OK, client.put("${ApiRoutes.CARDS}/c1") {
+            bearerAuth(token)
+            contentType(ContentType.Application.Json)
+            setBody(card)
+        }.status)
+        assertEquals(HttpStatusCode.BadRequest, client.put("${ApiRoutes.CARDS}/c2") {
+            bearerAuth(token)
+            contentType(ContentType.Application.Json)
+            setBody(card.copy(id = "c2", dueDay = 40))
+        }.status)
+
+        val tv = Transaction(id = "tv", type = TxType.EXPENSE, amountCents = 120_000, description = "TV", date = Schedule.now(), cardId = "c1", installments = 99)
+        client.put("${ApiRoutes.TRANSACTIONS}/tv") {
+            bearerAuth(token)
+            contentType(ContentType.Application.Json)
+            setBody(tv)
+        }
+        val pay = Transaction(id = "pay", type = TxType.EXPENSE, amountCents = 10_000, description = "Fatura", date = Schedule.now(), invoiceKey = "c1/2026-12")
+        client.put("${ApiRoutes.TRANSACTIONS}/pay") {
+            bearerAuth(token)
+            contentType(ContentType.Application.Json)
+            setBody(pay)
+        }
+
+        val sync = client.get("${ApiRoutes.SYNC}?since=0") { bearerAuth(token) }.body<SyncResponse>()
+        assertEquals("Nubank", sync.cards.single().name)
+        val synced = sync.transactions.associateBy { it.id }
+        assertEquals("c1", synced.getValue("tv").cardId)
+        assertEquals(48, synced.getValue("tv").installments)
+        assertEquals("c1/2026-12", synced.getValue("pay").invoiceKey)
+
+        client.delete("${ApiRoutes.CARDS}/c1") { bearerAuth(token) }
+        val after = client.get("${ApiRoutes.SYNC}?since=0") { bearerAuth(token) }.body<SyncResponse>()
+        assertTrue(after.cards.single().deleted)
     }
 
     @Test

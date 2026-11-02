@@ -68,6 +68,22 @@ object Transactions : Table("transactions") {
     val date = long("date").index()
     val origin = varchar("source", 20)
     val externalId = varchar("external_id", 100).nullable()
+    val cardId = varchar("card_id", 64).nullable()
+    val installments = integer("installments").default(1)
+    val invoiceKey = varchar("invoice_key", 100).nullable()
+    val updatedAt = long("updated_at").index()
+    val deleted = bool("deleted")
+    override val primaryKey = PrimaryKey(userId, id)
+}
+
+object CardsTable : Table("cards") {
+    val userId = long("user_id").references(Users.id)
+    val id = varchar("id", 64)
+    val name = varchar("name", 80)
+    val closingDay = integer("closing_day")
+    val dueDay = integer("due_day")
+    val limitCents = long("limit_cents").nullable()
+    val color = integer("color")
     val updatedAt = long("updated_at").index()
     val deleted = bool("deleted")
     override val primaryKey = PrimaryKey(userId, id)

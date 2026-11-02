@@ -1,5 +1,6 @@
 package dev.zentro.server.db
 
+import dev.zentro.shared.CreditCard
 import dev.zentro.shared.DEFAULT_TIMEZONE
 import dev.zentro.shared.Event
 import dev.zentro.shared.Note
@@ -69,7 +70,7 @@ class Store(val file: File) {
     init {
         TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
         transaction(db) {
-            SchemaUtils.createMissingTablesAndColumns(Users, Events, People, NotesTable, Transactions, Settings, Files, SentNotifications, Meta)
+            SchemaUtils.createMissingTablesAndColumns(Users, Events, People, NotesTable, Transactions, CardsTable, Settings, Files, SentNotifications, Meta)
         }
     }
 
@@ -197,6 +198,35 @@ class Store(val file: File) {
         People.selectAll().where { (People.userId eq userId) and (People.deleted eq false) }.map { it.toPerson() }
     }
 
+    // ---------- cartões ----------
+
+    suspend fun upsertCard(userId: Long, card: CreditCard, now: Long): CreditCard = query {
+        val stored = card.copy(updatedAt = now)
+        CardsTable.upsert {
+            it[CardsTable.userId] = userId
+            it[id] = stored.id
+            it[name] = stored.name
+            it[closingDay] = stored.closingDay
+            it[dueDay] = stored.dueDay
+            it[limitCents] = stored.limitCents
+            it[color] = stored.color
+            it[updatedAt] = now
+            it[deleted] = stored.deleted
+        }
+        stored
+    }
+
+    suspend fun deleteCard(userId: Long, id: String, now: Long): Boolean = query {
+        CardsTable.update({ (CardsTable.userId eq userId) and (CardsTable.id eq id) }) {
+            it[deleted] = true
+            it[updatedAt] = now
+        } > 0
+    }
+
+    suspend fun cardsSince(userId: Long, since: Long): List<CreditCard> = query {
+        CardsTable.selectAll().where { (CardsTable.userId eq userId) and (CardsTable.updatedAt greaterEq since) }.map { it.toCard() }
+    }
+
     // ---------- anotações ----------
 
     suspend fun upsertNote(userId: Long, note: Note, now: Long): Note = query {
@@ -281,6 +311,9 @@ class Store(val file: File) {
             it[date] = stored.date
             it[origin] = stored.source.name
             it[externalId] = stored.externalId
+            it[cardId] = stored.cardId
+            it[installments] = stored.installments
+            it[invoiceKey] = stored.invoiceKey
             it[updatedAt] = now
             it[deleted] = stored.deleted
         }
@@ -455,6 +488,17 @@ class Store(val file: File) {
         deleted = this[Events.deleted],
     )
 
+    private fun ResultRow.toCard() = CreditCard(
+        id = this[CardsTable.id],
+        name = this[CardsTable.name],
+        closingDay = this[CardsTable.closingDay],
+        dueDay = this[CardsTable.dueDay],
+        limitCents = this[CardsTable.limitCents],
+        color = this[CardsTable.color],
+        updatedAt = this[CardsTable.updatedAt],
+        deleted = this[CardsTable.deleted],
+    )
+
     private fun ResultRow.toPerson() = Person(
         id = this[People.id],
         name = this[People.name],
@@ -484,6 +528,9 @@ class Store(val file: File) {
         date = this[Transactions.date],
         source = runCatching { TxSource.valueOf(this[Transactions.origin]) }.getOrDefault(TxSource.MANUAL),
         externalId = this[Transactions.externalId],
+        cardId = this[Transactions.cardId],
+        installments = this[Transactions.installments],
+        invoiceKey = this[Transactions.invoiceKey],
         updatedAt = this[Transactions.updatedAt],
         deleted = this[Transactions.deleted],
     )
