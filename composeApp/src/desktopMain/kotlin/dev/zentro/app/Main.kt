@@ -28,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +47,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -61,6 +61,7 @@ import dev.zentro.shared.Schedule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -147,35 +148,43 @@ fun main(args: Array<String>) {
         }
 
         val windowState = rememberWindowState(width = 1120.dp, height = 760.dp, position = WindowPosition(Alignment.Center))
-        Window(
-            onCloseRequest = { visible.value = false },
-            visible = isVisible,
-            title = "Zentro",
-            icon = icon,
-            state = windowState,
-        ) {
-            LaunchedEffect(Unit) { window.minimumSize = Dimension(420, 640) }
-            val dark = true // o Zentro usa sempre o tema grafite
-            LaunchedEffect(dark, isVisible) { TitleBar.apply(window, dark) }
-            LaunchedEffect(windowState.isMinimized) { minimized.value = windowState.isMinimized }
-            LaunchedEffect(isVisible) {
-                if (isVisible) {
+        // A aba e a nota abertas ficam guardadas aqui fora enquanto a janela não existe.
+        val screens = rememberSaveableStateHolder()
+        // O Compose encerra o app quando não sobra nada rodando; na bandeja não há janela, então
+        // isto mantém o Zentro vivo até o "Sair" do menu.
+        LaunchedEffect(Unit) { awaitCancellation() }
+
+        // Na bandeja a janela é fechada de verdade: a tela desenhada e tudo o que ela carregou
+        // (imagens das notas, por exemplo) deixam de ocupar memória. Ela volta igual ao abrir.
+        if (isVisible) {
+            Window(
+                onCloseRequest = { visible.value = false },
+                title = "Zentro",
+                icon = icon,
+                state = windowState,
+            ) {
+                val dark = true // o Zentro usa sempre o tema grafite
+                LaunchedEffect(Unit) {
+                    window.minimumSize = Dimension(420, 640)
+                    TitleBar.apply(window, dark)
                     windowState.isMinimized = false
-                    if (windowState.placement == WindowPlacement.Floating) window.toFront()
+                    bringToFront(window)
                     repo.sync()
+                    showRequests.collect {
+                        windowState.isMinimized = false
+                        bringToFront(window)
+                    }
                 }
+                LaunchedEffect(windowState.isMinimized) { minimized.value = windowState.isMinimized }
+                screens.SaveableStateProvider("main") { App(repo, platform) }
             }
+        } else {
             LaunchedEffect(Unit) {
-                showRequests.collect {
-                    windowState.isMinimized = false
-                    // O Windows bloqueia "roubar o foco"; ficar por cima por um instante faz a janela vir para a frente.
-                    window.isAlwaysOnTop = true
-                    window.toFront()
-                    window.requestFocus()
-                    window.isAlwaysOnTop = false
-                }
+                minimized.value = false
+                // Depois de fechar a janela, devolve ao sistema a memória que ela usava.
+                delay(2_000)
+                System.gc()
             }
-            App(repo, platform)
         }
 
         menuAt?.let { at ->
@@ -191,6 +200,14 @@ fun main(args: Array<String>) {
         CriticalAlerts(notifier, alarm, scope, onOpen = { show() })
     }
     exitProcess(0)
+}
+
+/** O Windows bloqueia "roubar o foco"; ficar por cima por um instante faz a janela vir para a frente. */
+private fun bringToFront(window: java.awt.Window) {
+    window.isAlwaysOnTop = true
+    window.toFront()
+    window.requestFocus()
+    window.isAlwaysOnTop = false
 }
 
 @Composable
