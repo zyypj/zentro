@@ -2,9 +2,22 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
-## [1.6.0] - 2026-11-02
+## [2.0.0] - 2026-11-02
+
+### Visual novo
+- **Nova identidade visual** no tema grafite (escuro), com a fonte Inter, ícones de traço fino e o novo logo "Z", também nos ícones do app no Windows, Mac, Linux e Android.
+- **PC:** barra lateral com as seções, as pastas das notas (com contagem), a situação da sincronização e o seu perfil. Na barra de cima ficam o caminho, a busca, os avisos e o botão "Novo item".
+- **Celular:** barra de abas embaixo e cabeçalho próprio em cada tela, com o botão "+".
+- **Hoje:** saudação, captura rápida, linha do tempo dos compromissos, próximas contas e anotações recentes. No PC, ao lado, ficam o calendário do mês, as finanças do mês e o atalho para anotar uma ideia.
+- **Agenda:** calendário com um pontinho nos dias com compromisso, filtros e "Ver semana".
+- **Notas:** cartões das pastas, nota fixada em destaque e tarefas que dá para marcar direto na lista.
 
 ### Novidades
+- **Captura rápida única:** escreva qualquer coisa na tela Hoje. "45,90 almoço" vira gasto, "reunião amanhã às 14h" vira compromisso e o resto vira anotação.
+- **Categorias nos compromissos:** Trabalho, Faculdade e Pessoal, com etiqueta colorida e filtro na Agenda.
+- **Busca global (Ctrl+K):** acha compromissos, notas, movimentações e cartões de uma vez. No celular, use a lupa da tela Hoje.
+- **Sininho de avisos:** contas e faturas atrasadas ou vencendo, a revisão do dia e o próximo compromisso.
+- **Pastas na barra lateral do PC**, com "+ Nova pasta".
 - **Cartões de crédito:** cadastre cada cartão com o dia em que a fatura fecha, o dia em que vence e o limite (opcional).
   - Lance os gastos à vista ou parcelados. Cada parcela cai na fatura certa, e compras feitas a partir do dia do fechamento vão para a fatura seguinte.
   - Veja fatura por fatura, com cada gasto, o número da parcela, o total e o limite usado.
