@@ -40,10 +40,10 @@ object TitleBar {
 
             if (set(USE_IMMERSIVE_DARK_MODE, if (dark) 1 else 0) != 0) set(USE_IMMERSIVE_DARK_MODE_OLD, if (dark) 1 else 0)
             // Mesma cor da barra lateral do app, para a janela parecer uma peça só.
-            val caption = if (dark) 0x12151A else 0xFAFAFD
+            val caption = if (dark) 0x18181B else 0xF7F6F5
             set(CAPTION_COLOR, colorRef(caption))
-            set(BORDER_COLOR, colorRef(caption))
-            set(TEXT_COLOR, colorRef(if (dark) 0xE9EAEE else 0x16181D))
+            set(BORDER_COLOR, colorRef(if (dark) 0x2A2A30 else 0xE8E5E5))
+            set(TEXT_COLOR, colorRef(if (dark) 0xA9A6B1 else 0x5B5A62))
         }
     }
 }

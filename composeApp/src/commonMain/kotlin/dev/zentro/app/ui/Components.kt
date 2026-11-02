@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.datetime.Instant
@@ -84,13 +85,8 @@ fun AdaptiveSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> 
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
-    Row(modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
+    Row(modifier.fillMaxWidth().padding(top = 22.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        ZText(text, 14.sp, 700, ZPalette.Ink, Modifier.weight(1f), maxLines = 1, tracking = -0.01)
         action?.invoke()
     }
 }
@@ -100,6 +96,7 @@ fun ZCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, color: C
     Surface(
         shape = MaterialTheme.shapes.large,
         color = color,
+        border = androidx.compose.foundation.BorderStroke(1.dp, ZPalette.Line),
         modifier = modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).let { if (onClick != null) it.clickable(onClick = onClick) else it },
     ) {
         Column(Modifier.padding(16.dp), content = content)
