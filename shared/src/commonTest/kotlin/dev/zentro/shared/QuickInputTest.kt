@@ -69,4 +69,17 @@ class QuickInputTest {
         assertEquals(TxType.INCOME, QuickInput.parseTransaction("3500 salário")!!.type)
         assertNull(QuickInput.parseTransaction("almoço"))
     }
+
+    @Test
+    fun classifyDecidesWhereTheQuickCaptureGoes() {
+        val today = kotlinx.datetime.LocalDate(2026, 11, 2)
+        assertEquals(QuickInput.Kind.TRANSACTION, QuickInput.classify("45,90 almoço", today))
+        assertEquals(QuickInput.Kind.TRANSACTION, QuickInput.classify("+1200 salário", today))
+        assertEquals(QuickInput.Kind.EVENT, QuickInput.classify("reunião amanhã às 14h", today))
+        assertEquals(QuickInput.Kind.EVENT, QuickInput.classify("10h dentista", today))
+        assertEquals(QuickInput.Kind.EVENT, QuickInput.classify("Hospedagem todo dia 5 49,90", today))
+        assertEquals(QuickInput.Kind.EVENT, QuickInput.classify("prova sexta 10h", today))
+        assertEquals(QuickInput.Kind.NOTE, QuickInput.classify("Ideia: app de receitas", today))
+        assertEquals(QuickInput.Kind.NOTE, QuickInput.classify("comprar presente da Ana", today))
+    }
 }

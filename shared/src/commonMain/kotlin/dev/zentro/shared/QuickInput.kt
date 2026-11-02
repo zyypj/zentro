@@ -151,6 +151,30 @@ object QuickInput {
         return inMonth(next.year, next.monthNumber)
     }
 
+    /** O que um texto da captura rápida parece ser. */
+    enum class Kind { EVENT, TRANSACTION, NOTE }
+
+    /**
+     * Decide o destino da captura rápida: começa com valor ("45,90 almoço", "+1200 salário") é
+     * movimentação; tem dia, hora ou repetição ("reunião amanhã às 14h") é compromisso; o resto
+     * vira anotação.
+     */
+    fun classify(input: String, today: LocalDate): Kind {
+        val text = " ${input.trim()} "
+        val lower = text.lowercase()
+        val hasWhen = timeRegex.containsMatchIn(text) || dateRegex.containsMatchIn(text) ||
+            monthlyDayRegex.containsMatchIn(text) ||
+            simpleRecurrences.any { lower.contains(it.first) } ||
+            relative.any { lower.contains(" ${it.first} ") } ||
+            weekdayNames.keys.any { Regex("""\s$it(?:-feira)?\s""").containsMatchIn(lower) }
+        val startsWithTime = timeRegex.find(text)?.range?.first?.let { text.substring(0, it).isBlank() } == true
+        return when {
+            !startsWithTime && !hasWhen && parseTransaction(input) != null -> Kind.TRANSACTION
+            hasWhen && parseEvent(input, today) != null -> Kind.EVENT
+            else -> Kind.NOTE
+        }
+    }
+
     private val moneyRegex = Regex("""^\s*([+-])?\s*(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(.*)$""", RegexOption.IGNORE_CASE)
 
     /** "+" ou palavras de entrada viram ENTRADA; o resto é SAÍDA (o caso mais comum). */
