@@ -2,6 +2,18 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [1.6.0] - 2026-11-02
+
+### Novidades
+- **Cartões de crédito:** cadastre cada cartão com o dia em que a fatura fecha, o dia em que vence e o limite (opcional).
+  - Lance os gastos à vista ou parcelados. Cada parcela cai na fatura certa, e compras feitas a partir do dia do fechamento vão para a fatura seguinte.
+  - Veja fatura por fatura, com cada gasto, o número da parcela, o total e o limite usado.
+  - "Marcar como paga" lança o valor da fatura como saída e desconta do saldo. Dá para desfazer.
+- **Saldo acumulado:** o que sobra num mês continua no seguinte, como na conta do banco. Compras no cartão só descontam quando a fatura é paga.
+- **Saldo no fim de cada mês:** histórico com quanto você terminou cada mês e o resultado do mês.
+- **Ajustar saldo:** informe quanto você tem hoje e o Zentro lança a diferença como "Ajuste de saldo".
+- **Números de linha também no leitor das notas**, e não só no editor.
+
 ## [1.5.3] - 2026-10-30
 
 ### Novidades
