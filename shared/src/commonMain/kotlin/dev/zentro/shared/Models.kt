@@ -82,6 +82,29 @@ data class Transaction(
     val date: Long,
     val source: TxSource = TxSource.MANUAL,
     val externalId: String? = null,
+    /** Compra no cartão de crédito: não mexe no saldo agora, entra nas faturas do cartão. */
+    val cardId: String? = null,
+    /** Em quantas parcelas a compra no cartão foi feita. */
+    val installments: Int = 1,
+    /** Este lançamento é o pagamento da fatura indicada (ver [Cards.invoiceKey]). */
+    val invoiceKey: String? = null,
+    val updatedAt: Long = 0,
+    val deleted: Boolean = false,
+)
+
+/**
+ * Um cartão de crédito. A fatura fecha no [closingDay] (compras a partir desse dia vão para a
+ * fatura seguinte) e vence no [dueDay]. Dias maiores que o mês (ex.: 31 em fevereiro) viram o último dia.
+ */
+@Serializable
+data class CreditCard(
+    val id: String,
+    val name: String,
+    val closingDay: Int = 3,
+    val dueDay: Int = 10,
+    /** Limite em centavos (opcional, só para mostrar quanto já foi usado). */
+    val limitCents: Long? = null,
+    val color: Int = 0,
     val updatedAt: Long = 0,
     val deleted: Boolean = false,
 )
