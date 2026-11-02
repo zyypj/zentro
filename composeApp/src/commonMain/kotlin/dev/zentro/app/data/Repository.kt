@@ -1,6 +1,9 @@
 package dev.zentro.app.data
 
+import dev.zentro.shared.Cards
+import dev.zentro.shared.CreditCard
 import dev.zentro.shared.Event
+import dev.zentro.shared.Finance
 import dev.zentro.shared.MercadoPagoStatus
 import dev.zentro.shared.Note
 import dev.zentro.shared.Person
@@ -87,6 +90,8 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
                 { o -> (o.kind == OpKind.UPSERT_PERSON || o.kind == OpKind.DELETE_PERSON) && o.targetId == op.targetId }
             OpKind.UPSERT_NOTE, OpKind.DELETE_NOTE ->
                 { o -> (o.kind == OpKind.UPSERT_NOTE || o.kind == OpKind.DELETE_NOTE) && o.targetId == op.targetId }
+            OpKind.UPSERT_CARD, OpKind.DELETE_CARD ->
+                { o -> (o.kind == OpKind.UPSERT_CARD || o.kind == OpKind.DELETE_CARD) && o.targetId == op.targetId }
             OpKind.REVIEW -> { o -> o.kind == OpKind.REVIEW }
             OpKind.SETTINGS -> { _ -> false }
         }
@@ -120,7 +125,7 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
 
     // ---------------- proteção contra perda de dados ----------------
 
-    private fun AppData.hasContent() = events.isNotEmpty() || notes.isNotEmpty() || transactions.isNotEmpty() || people.isNotEmpty()
+    private fun AppData.hasContent() = events.isNotEmpty() || notes.isNotEmpty() || transactions.isNotEmpty() || people.isNotEmpty() || cards.isNotEmpty()
 
     private suspend fun saveBackup(data: AppData) {
         if (data.session == null || !data.hasContent()) return
@@ -146,9 +151,10 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         val notes: List<Note>,
         val transactions: List<Transaction>,
         val people: List<Person>,
+        val cards: List<CreditCard>,
         val pending: List<PendingOp>,
     ) {
-        val isEmpty get() = events.isEmpty() && notes.isEmpty() && transactions.isEmpty() && people.isEmpty() && pending.isEmpty()
+        val isEmpty get() = events.isEmpty() && notes.isEmpty() && transactions.isEmpty() && people.isEmpty() && cards.isEmpty() && pending.isEmpty()
     }
 
     private fun unsynced(email: String): Unsynced? {
@@ -160,7 +166,8 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         val notes = backup.notes.filter { (id, n) -> n.updatedAt > since && (current.notes[id]?.updatedAt ?: 0) < n.updatedAt }.values.toList()
         val transactions = backup.transactions.filter { (id, t) -> t.updatedAt > since && (current.transactions[id]?.updatedAt ?: 0) < t.updatedAt }.values.toList()
         val people = backup.people.filter { (id, p) -> p.updatedAt > since && (current.people[id]?.updatedAt ?: 0) < p.updatedAt }.values.toList()
-        return Unsynced(events, notes, transactions, people, backup.outbox).takeIf { !it.isEmpty }
+        val cards = backup.cards.filter { (id, c) -> c.updatedAt > since && (current.cards[id]?.updatedAt ?: 0) < c.updatedAt }.values.toList()
+        return Unsynced(events, notes, transactions, people, cards, backup.outbox).takeIf { !it.isEmpty }
     }
 
     /** Ao entrar: se este aparelho tem alterações dessa conta que não chegaram ao servidor, oferece enviar. */
@@ -184,7 +191,9 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
                 notes = current.notes + u.notes.associateBy { it.id },
                 transactions = current.transactions + u.transactions.associateBy { it.id },
                 people = current.people + u.people.associateBy { it.id },
+                cards = current.cards + u.cards.associateBy { it.id },
             )
+            u.cards.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_CARD, it.id, card = it)) }
             u.people.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_PERSON, it.id, person = it)) }
             u.events.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_EVENT, it.id, event = it)) }
             u.notes.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_NOTE, it.id, note = it)) }
@@ -197,6 +206,7 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
                     OpKind.DELETE_NOTE -> d.copy(notes = d.notes - op.targetId)
                     OpKind.DELETE_TX -> d.copy(transactions = d.transactions - op.targetId)
                     OpKind.DELETE_PERSON -> d.copy(people = d.people - op.targetId)
+                    OpKind.DELETE_CARD -> d.copy(cards = d.cards - op.targetId)
                     else -> d
                 }
             }
@@ -214,6 +224,7 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
     private fun AppData.enqueueEverything(): AppData {
         var d = this
         people.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_PERSON, it.id, person = it)) }
+        cards.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_CARD, it.id, card = it)) }
         events.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_EVENT, it.id, event = it)) }
         notes.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_NOTE, it.id, note = it)) }
         transactions.values.forEach { d = d.enqueue(PendingOp(OpKind.UPSERT_TX, it.id, transaction = it)) }
@@ -365,6 +376,63 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
         sync()
     }
 
+    /** Lança a diferença para o saldo de agora ficar igual a [targetCents] (ex.: o que o banco mostra). */
+    fun adjustBalance(targetCents: Long) = scope.launch {
+        val now = Schedule.now()
+        val tx = Finance.adjustment(_data.value.activeTransactions, targetCents, newId(), now) ?: return@launch
+        val saved = tx.copy(updatedAt = now)
+        update {
+            it.copy(transactions = it.transactions + (saved.id to saved))
+                .enqueue(PendingOp(OpKind.UPSERT_TX, saved.id, transaction = saved))
+        }
+        sync()
+    }
+
+    // ---------------- cartões de crédito ----------------
+
+    fun saveCard(card: CreditCard) = scope.launch {
+        val saved = card.copy(updatedAt = Schedule.now(), deleted = false)
+        update {
+            it.copy(cards = it.cards + (saved.id to saved))
+                .enqueue(PendingOp(OpKind.UPSERT_CARD, saved.id, card = saved))
+        }
+        sync()
+    }
+
+    /** Apaga o cartão e as compras feitas nele. Faturas já pagas continuam (já saíram do saldo). */
+    fun deleteCard(id: String) = scope.launch {
+        update { d ->
+            val purchases = d.transactions.values.filter { it.cardId == id }.map { it.id }
+            var next = d.copy(cards = d.cards - id, transactions = d.transactions - purchases.toSet())
+                .enqueue(PendingOp(OpKind.DELETE_CARD, id))
+            purchases.forEach { next = next.enqueue(PendingOp(OpKind.DELETE_TX, it)) }
+            next
+        }
+        sync()
+    }
+
+    /**
+     * Marca a fatura como paga (ou desfaz). Pagar lança uma saída com o total da fatura, que desconta
+     * do saldo; desfazer apaga esse lançamento.
+     */
+    fun setInvoicePaid(invoice: Cards.Invoice, paid: Boolean) = scope.launch {
+        val now = Schedule.now()
+        val id = Cards.paymentId(invoice.card.id, invoice.month)
+        update { d ->
+            if (paid) {
+                if (invoice.totalCents <= 0) return@update d
+                val tx = Cards.payment(invoice, now).copy(updatedAt = now)
+                d.copy(transactions = d.transactions + (id to tx)).enqueue(PendingOp(OpKind.UPSERT_TX, id, transaction = tx))
+            } else {
+                val existing = d.transactions.values.filter { it.invoiceKey == invoice.key }.map { it.id }.toSet() + id
+                var next = d.copy(transactions = d.transactions - existing)
+                existing.forEach { next = next.enqueue(PendingOp(OpKind.DELETE_TX, it)) }
+                next
+            }
+        }
+        sync()
+    }
+
     // ---------------- sincronização ----------------
 
     private suspend fun send(client: ApiClient, op: PendingOp) {
@@ -379,6 +447,8 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
             OpKind.DELETE_PERSON -> client.deletePerson(op.targetId)
             OpKind.UPSERT_NOTE -> client.putNote(op.note!!)
             OpKind.DELETE_NOTE -> client.deleteNote(op.targetId)
+            OpKind.UPSERT_CARD -> client.putCard(op.card!!)
+            OpKind.DELETE_CARD -> client.deleteCard(op.targetId)
         }
     }
 
@@ -425,12 +495,18 @@ class Repository(private val storage: FileStorage, private val scope: CoroutineS
                     if (n.id in pendingIds) continue
                     if (n.deleted) notes.remove(n.id) else notes[n.id] = n
                 }
+                val cards = d.cards.toMutableMap()
+                for (c in response.cards) {
+                    if (c.id in pendingIds) continue
+                    if (c.deleted) cards.remove(c.id) else cards[c.id] = c
+                }
                 val settingsPending = d.outbox.any { it.kind == OpKind.REVIEW || it.kind == OpKind.SETTINGS }
                 d.copy(
                     events = events,
                     transactions = transactions,
                     people = people,
                     notes = notes,
+                    cards = cards,
                     settings = if (settingsPending) d.settings else response.settings,
                     lastSync = response.serverTime,
                     lastSyncOk = Schedule.now(),

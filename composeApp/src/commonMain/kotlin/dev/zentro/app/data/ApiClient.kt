@@ -12,6 +12,7 @@ import dev.zentro.shared.MercadoPagoConnect
 import dev.zentro.shared.MercadoPagoStatus
 import dev.zentro.shared.Note
 import dev.zentro.shared.Person
+import dev.zentro.shared.CreditCard
 import dev.zentro.shared.ReviewRequest
 import dev.zentro.shared.ServerInfo
 import dev.zentro.shared.SettingsPatch
@@ -111,6 +112,13 @@ class ApiClient(serverUrl: String, private val token: String?) {
 
     suspend fun deletePerson(id: String) {
         exec { http.delete("$base${ApiRoutes.PEOPLE}/$id") { prepare() } }
+    }
+
+    suspend fun putCard(card: CreditCard): CreditCard =
+        exec { http.put("$base${ApiRoutes.CARDS}/${card.id}") { prepare(); setBody(card) } }.body()
+
+    suspend fun deleteCard(id: String) {
+        exec { http.delete("$base${ApiRoutes.CARDS}/$id") { prepare() } }
     }
 
     suspend fun putNote(note: Note): Note =
