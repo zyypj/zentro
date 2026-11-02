@@ -18,6 +18,7 @@ Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://sem
 - **Busca global (Ctrl+K):** acha compromissos, notas, movimentações e cartões de uma vez. No celular, use a lupa da tela Hoje.
 - **Sininho de avisos:** contas e faturas atrasadas ou vencendo, a revisão do dia e o próximo compromisso.
 - **Pastas na barra lateral do PC**, com "+ Nova pasta".
+- **Mais cores e cores personalizadas** para compromissos, cartões e pessoas: 16 cores prontas e um seletor para criar a sua (matiz, intensidade, brilho ou código #hex). Em Ajustes › Pessoas, toque no nome para mudar a cor.
 - **Cartões de crédito:** cadastre cada cartão com o dia em que a fatura fecha, o dia em que vence e o limite (opcional).
   - Lance os gastos à vista ou parcelados. Cada parcela cai na fatura certa, e compras feitas a partir do dia do fechamento vão para a fatura seguinte.
   - Veja fatura por fatura, com cada gasto, o número da parcela, o total e o limite usado.
