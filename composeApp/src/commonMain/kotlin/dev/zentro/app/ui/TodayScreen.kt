@@ -165,18 +165,15 @@ private fun ReviewBanner(count: Int, onReviewed: () -> Unit) {
 @Composable
 fun MonthSummaryCard(data: AppData, tz: TimeZone, now: Long, onClick: () -> Unit) {
     val month = Schedule.today(tz, now)
-    val txs = data.activeTransactions.filter {
-        val d = Schedule.toLocal(it.date, tz).date
-        d.year == month.year && d.month == month.month
-    }
-    val income = txs.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
-    val expense = txs.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
+    val summary = dev.zentro.shared.Finance.month(data.activeTransactions, month, tz)
+    val income = summary.income
+    val expense = summary.expense
     ZCard(onClick = onClick) {
-        Text("Saldo de ${Format.monthName(month.month)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Saldo", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            Format.money(income - expense),
+            Format.money(summary.closing),
             style = MaterialTheme.typography.headlineSmall.merge(MoneyStyle),
-            color = if (income - expense < 0) ZColors.Expense else MaterialTheme.colorScheme.onSurface,
+            color = if (summary.closing < 0) ZColors.Expense else MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
