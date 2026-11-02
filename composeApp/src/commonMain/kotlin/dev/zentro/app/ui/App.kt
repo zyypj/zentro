@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -112,21 +113,22 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
             value = Schedule.now()
         }
     }
-    var tab by remember { mutableStateOf(Tab.TODAY) }
+    // O que a pessoa estava vendo continua igual quando a janela fecha e abre de novo (desktop).
+    var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
     var selectedDay by remember { mutableStateOf(Schedule.today(tz)) }
     var editingEvent by remember { mutableStateOf<EventEditRequest?>(null) }
     var editingTx by remember { mutableStateOf<TxEditRequest?>(null) }
     var editingCard by remember { mutableStateOf<CardEditRequest?>(null) }
-    var openCardId by remember { mutableStateOf<String?>(null) }
-    var notesFolder by remember { mutableStateOf<String?>(null) }
-    var openNoteId by remember { mutableStateOf<String?>(null) }
+    var openCardId by rememberSaveable { mutableStateOf<String?>(null) }
+    var notesFolder by rememberSaveable { mutableStateOf<String?>(null) }
+    var openNoteId by rememberSaveable { mutableStateOf<String?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
     var newFolder by remember { mutableStateOf(false) }
     val alerts = remember(data, now) { buildAlerts(data, tz, now) }
     val hasNews = alerts.any { !it.info }
     val appFocus = remember { FocusRequester() }
-    var agendaFilter by remember { mutableStateOf<String?>(null) }
+    var agendaFilter by rememberSaveable { mutableStateOf<String?>(null) }
     val updateState by platform.updates.state.collectAsState()
     val restoreOffer by repo.restoreOffer.collectAsState()
     val noteMedia = remember {
