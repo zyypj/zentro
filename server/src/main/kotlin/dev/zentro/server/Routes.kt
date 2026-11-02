@@ -94,6 +94,7 @@ private fun Event.validated(pathId: String): Event {
         title = cleanTitle,
         notes = notes.take(5000),
         billCategory = billCategory.trim().take(60).ifEmpty { "Contas" },
+        category = category.trim().take(40),
         paid = paid.distinct().takeLast(500),
         reminders = reminders.filter { it in 0..43_200 }.distinct().sortedDescending().take(10),
     )

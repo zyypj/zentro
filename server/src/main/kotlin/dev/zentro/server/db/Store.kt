@@ -146,6 +146,7 @@ class Store(val file: File) {
             it[personId] = stored.personId
             it[billAmountCents] = stored.billAmountCents
             it[billCategory] = stored.billCategory
+            it[category] = stored.category
             it[paid] = stored.paid.joinToString(",")
             it[updatedAt] = now
             it[deleted] = stored.deleted
@@ -483,6 +484,7 @@ class Store(val file: File) {
         personId = this[Events.personId],
         billAmountCents = this[Events.billAmountCents],
         billCategory = this[Events.billCategory],
+        category = this[Events.category],
         paid = this[Events.paid].split(",").mapNotNull { it.trim().toLongOrNull() },
         updatedAt = this[Events.updatedAt],
         deleted = this[Events.deleted],

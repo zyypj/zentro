@@ -28,6 +28,7 @@ object Events : Table("events") {
     // Colunas novas precisam de valor padrão para o SQLite aceitar o ALTER TABLE em bancos existentes.
     val billAmountCents = long("bill_amount_cents").nullable()
     val billCategory = varchar("bill_category", 60).default("Contas")
+    val category = varchar("category", 40).default("")
     val paid = text("paid").default("")
     val updatedAt = long("updated_at").index()
     val deleted = bool("deleted")
