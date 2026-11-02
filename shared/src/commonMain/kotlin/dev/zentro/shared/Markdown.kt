@@ -50,16 +50,30 @@ object Markdown {
     /** Todas as imagens (linhas `![...](...)`) de uma nota, na ordem em que aparecem. */
     fun images(content: String): List<MdBlock.Image> = parse(content).filterIsInstance<MdBlock.Image>()
 
-    fun parse(content: String): List<MdBlock> {
+    fun parse(content: String): List<MdBlock> = parseWithLines(content).map { it.block }
+
+    /** Um bloco e a linha do texto original (começando em 0) onde ele começa. */
+    data class Located(val line: Int, val block: MdBlock)
+
+    /** Como [parse], mas diz em que linha cada bloco começa (para os números de linha no leitor). */
+    fun parseWithLines(content: String): List<Located> {
         val blocks = mutableListOf<MdBlock>()
+        val starts = mutableListOf<Int>()
         val paragraph = mutableListOf<String>()
+        var paragraphStart = 0
         val code = mutableListOf<String>()
+        var codeStart = 0
         var inCode = false
         val lines = content.lines()
 
+        fun add(line: Int, block: MdBlock) {
+            blocks += block
+            starts += line
+        }
+
         fun flush() {
             if (paragraph.isNotEmpty()) {
-                blocks += MdBlock.Paragraph(paragraph.joinToString("\n"))
+                add(paragraphStart, MdBlock.Paragraph(paragraph.joinToString("\n")))
                 paragraph.clear()
             }
         }
@@ -69,10 +83,11 @@ object Markdown {
             val raw = lines[index]
             if (raw.trimStart().startsWith("```")) {
                 if (inCode) {
-                    blocks += MdBlock.Code(code.joinToString("\n"))
+                    add(codeStart, MdBlock.Code(code.joinToString("\n")))
                     code.clear()
                 } else {
                     flush()
+                    codeStart = index
                 }
                 inCode = !inCode
                 index++
@@ -87,6 +102,7 @@ object Markdown {
             // Tabela: uma linha com "|" seguida da linha separadora "|---|---|".
             if ('|' in raw && index + 1 < lines.size && '|' in lines[index + 1] && tableSeparator.matches(lines[index + 1])) {
                 flush()
+                val tableStart = index
                 val header = cells(raw)
                 val aligns = cells(lines[index + 1]).map { cell ->
                     val t = cell.trim()
@@ -103,7 +119,7 @@ object Markdown {
                     rows += List(header.size) { row.getOrElse(it) { "" } }
                     index++
                 }
-                blocks += MdBlock.Table(header, List(header.size) { aligns.getOrElse(it) { MdBlock.Align.LEFT } }, rows)
+                add(tableStart, MdBlock.Table(header, List(header.size) { aligns.getOrElse(it) { MdBlock.Align.LEFT } }, rows))
                 continue
             }
 
@@ -113,42 +129,45 @@ object Markdown {
                 image.matches(raw) -> {
                     flush()
                     val m = image.matchEntire(raw)!!
-                    blocks += MdBlock.Image(m.groupValues[1].trim(), m.groupValues[2].trim())
+                    add(index, MdBlock.Image(m.groupValues[1].trim(), m.groupValues[2].trim()))
                 }
-                divider.matches(raw) -> { flush(); blocks += MdBlock.Divider }
+                divider.matches(raw) -> { flush(); add(index, MdBlock.Divider) }
                 heading.matches(raw) -> {
                     flush()
                     val m = heading.matchEntire(raw)!!
-                    blocks += MdBlock.Heading(m.groupValues[1].length, m.groupValues[2].trim())
+                    add(index, MdBlock.Heading(m.groupValues[1].length, m.groupValues[2].trim()))
                 }
                 task.matches(raw) -> {
                     flush()
                     val m = task.matchEntire(raw)!!
-                    blocks += MdBlock.Task(index, m.groupValues[3], m.groupValues[2] != " ", indent)
+                    add(index, MdBlock.Task(index, m.groupValues[3], m.groupValues[2] != " ", indent))
                 }
                 bullet.matches(raw) -> {
                     flush()
-                    blocks += MdBlock.Bullet(bullet.matchEntire(raw)!!.groupValues[2], indent)
+                    add(index, MdBlock.Bullet(bullet.matchEntire(raw)!!.groupValues[2], indent))
                 }
                 numbered.matches(raw) -> {
                     flush()
                     val m = numbered.matchEntire(raw)!!
-                    blocks += MdBlock.Numbered(m.groupValues[2].toInt(), m.groupValues[3], indent)
+                    add(index, MdBlock.Numbered(m.groupValues[2].toInt(), m.groupValues[3], indent))
                 }
                 raw.trimStart().startsWith(">") -> {
                     flush()
                     val text = raw.trimStart().removePrefix(">").trimStart()
                     val last = blocks.lastOrNull()
                     if (last is MdBlock.Quote) blocks[blocks.lastIndex] = MdBlock.Quote(last.text + "\n" + text)
-                    else blocks += MdBlock.Quote(text)
+                    else add(index, MdBlock.Quote(text))
                 }
-                else -> paragraph += raw.trimEnd()
+                else -> {
+                    if (paragraph.isEmpty()) paragraphStart = index
+                    paragraph += raw.trimEnd()
+                }
             }
             index++
         }
-        if (inCode && code.isNotEmpty()) blocks += MdBlock.Code(code.joinToString("\n"))
+        if (inCode && code.isNotEmpty()) add(codeStart, MdBlock.Code(code.joinToString("\n")))
         flush()
-        return blocks
+        return blocks.indices.map { Located(starts[it], blocks[it]) }
     }
 
     /** Divide uma linha de tabela nas células, respeitando `\|` e barras dentro de `código`. */
