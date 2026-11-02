@@ -1,7 +1,6 @@
 package dev.zentro.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,25 +71,12 @@ import java.io.File
 import javax.swing.JOptionPane
 import kotlin.system.exitProcess
 
-/** Ícone desenhado em código (quadrado roxo com "Z"), usado na janela e na bandeja. */
+/** Ícone da marca (quadrado roxo com o "Z"), desenhado em código; usado na janela e na bandeja. */
 class ZentroIcon : Painter() {
     override val intrinsicSize = Size(256f, 256f)
 
     override fun DrawScope.onDraw() {
-        val s = size.minDimension
-        drawRoundRect(
-            brush = Brush.linearGradient(listOf(Color(0xFF8B7CF6), Color(0xFF5B4BDB)), Offset.Zero, Offset(s, s)),
-            size = Size(s, s),
-            cornerRadius = CornerRadius(s * 0.28f),
-        )
-        val stroke = Stroke(width = s * 0.12f)
-        val path = androidx.compose.ui.graphics.Path().apply {
-            moveTo(s * 0.30f, s * 0.30f)
-            lineTo(s * 0.70f, s * 0.30f)
-            lineTo(s * 0.30f, s * 0.70f)
-            lineTo(s * 0.70f, s * 0.70f)
-        }
-        drawPath(path, Color.White, style = stroke)
+        with(dev.zentro.app.ui.ZMark) { drawMark(size) }
     }
 }
 
@@ -169,7 +155,7 @@ fun main(args: Array<String>) {
             state = windowState,
         ) {
             LaunchedEffect(Unit) { window.minimumSize = Dimension(420, 640) }
-            val dark = isSystemInDarkTheme()
+            val dark = true // o Zentro usa sempre o tema grafite
             LaunchedEffect(dark, isVisible) { TitleBar.apply(window, dark) }
             LaunchedEffect(windowState.isMinimized) { minimized.value = windowState.isMinimized }
             LaunchedEffect(isVisible) {
@@ -272,7 +258,7 @@ private fun ApplicationScope.CriticalAlerts(notifier: DesktopNotifier, alarm: So
         state = rememberWindowState(position = WindowPosition(Alignment.Center), size = DpSize(520.dp, 340.dp)),
         icon = remember { ZentroIcon() },
     ) {
-        val dark = isSystemInDarkTheme()
+        val dark = true // o Zentro usa sempre o tema grafite
         LaunchedEffect(trigger.key) {
             TitleBar.apply(window, dark)
             window.toFront()
