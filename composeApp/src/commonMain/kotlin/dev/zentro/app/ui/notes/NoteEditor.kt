@@ -493,6 +493,7 @@ fun NoteEditor(
                             onOpenLink = { saveIfChanged(); onOpenLink(it) },
                             onTag = onTag,
                             loadImage = media.load,
+                            lineNumbers = wide,
                         )
                     }
 

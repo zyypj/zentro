@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.zentro.shared.Markdown
 import dev.zentro.shared.MdBlock
 import dev.zentro.shared.MdSpan
@@ -67,8 +68,9 @@ fun MarkdownView(
     onTag: (String) -> Unit,
     loadImage: suspend (String) -> ImageBitmap?,
     modifier: Modifier = Modifier,
+    lineNumbers: Boolean = false,
 ) {
-    val blocks = remember(content) { Markdown.parse(content) }
+    val blocks = remember(content) { Markdown.parseWithLines(content) }
     val colors = MaterialTheme.colorScheme
     val linkColor = colors.primary
     val missingColor = colors.primary.copy(alpha = 0.55f)
@@ -105,7 +107,7 @@ fun MarkdownView(
     }
 
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (block in blocks) {
+        for ((line, block) in blocks) NumberedLine(if (lineNumbers) line + 1 else null) {
             when (block) {
                 is MdBlock.Heading -> Text(
                     styled(block.text),
@@ -150,6 +152,26 @@ fun MarkdownView(
                 is MdBlock.Image -> NoteImage(block.src, block.alt, loadImage)
             }
         }
+    }
+}
+
+/** Número da linha do texto onde o bloco começa, à esquerda, alinhado com a primeira linha do bloco. */
+@Composable
+private fun NumberedLine(number: Int?, content: @Composable () -> Unit) {
+    if (number == null) {
+        content()
+        return
+    }
+    Row {
+        Text(
+            number.toString(),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(28.dp).alignByBaseline(),
+        )
+        Box(Modifier.padding(start = 16.dp).weight(1f).alignByBaseline()) { content() }
     }
 }
 
