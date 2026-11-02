@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import dev.zentro.app.data.newId
 import dev.zentro.shared.Event
+import dev.zentro.shared.EventCategories
 import dev.zentro.shared.Format
 import dev.zentro.shared.Person
 import dev.zentro.shared.Recurrence
@@ -68,6 +69,7 @@ data class EventEditRequest(
     val personId: String? = null,
     val billAmountCents: Long? = null,
     val recurrence: Recurrence? = null,
+    val category: String = "",
 )
 
 private val reminderOptions = listOf(0, 5, 15, 30, 60, 120, 1440)
@@ -122,6 +124,7 @@ fun EventEditor(
         mutableStateOf((original?.billAmountCents ?: request.billAmountCents)?.let { Format.money(it).removePrefix("R$ ") } ?: "")
     }
     var billCategory by remember { mutableStateOf(original?.billCategory ?: "Contas") }
+    var category by remember { mutableStateOf(original?.category ?: request.category) }
     var addingPerson by remember { mutableStateOf(false) }
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
@@ -159,6 +162,7 @@ fun EventEditor(
                 personId = personId,
                 billAmountCents = billCents,
                 billCategory = billCategory,
+                category = category,
                 paid = original?.paid ?: emptyList(),
             ),
         )
@@ -179,6 +183,18 @@ fun EventEditor(
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
         )
+
+        ChipGroup("Categoria") {
+            FilterChip(selected = category.isEmpty(), onClick = { category = "" }, label = { Text("Nenhuma") })
+            EventCategories.all.forEach { c ->
+                FilterChip(
+                    selected = category == c,
+                    onClick = { category = c },
+                    label = { Text(c) },
+                    leadingIcon = { Icon(categoryIcon(c), null, Modifier.size(16.dp), tint = categoryColors(c).text) },
+                )
+            }
+        }
 
         ChipGroup("De quem é?") {
             FilterChip(selected = personId == null, onClick = { personId = null }, label = { Text("Meu") })
