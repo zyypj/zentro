@@ -101,6 +101,8 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
     var selectedDay by remember { mutableStateOf(Schedule.today(tz)) }
     var editingEvent by remember { mutableStateOf<EventEditRequest?>(null) }
     var editingTx by remember { mutableStateOf<TxEditRequest?>(null) }
+    var editingCard by remember { mutableStateOf<CardEditRequest?>(null) }
+    var openCardId by remember { mutableStateOf<String?>(null) }
     var agendaFilter by remember { mutableStateOf<String?>(null) }
     val updateState by platform.updates.state.collectAsState()
     val restoreOffer by repo.restoreOffer.collectAsState()
@@ -264,6 +266,17 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                         onOpenBill = { editingEvent = EventEditRequest(it, Schedule.today(tz)) },
                         onTogglePaid = ::togglePaid,
                         onNewBill = { editingEvent = EventEditRequest(null, Schedule.today(tz), billAmountCents = 0, recurrence = Recurrence.MONTHLY) },
+                        cards = data.activeCards,
+                        onOpenCard = { openCardId = it.id },
+                        onNewCard = { editingCard = CardEditRequest(null) },
+                        onPayInvoice = { invoice, paid ->
+                            repo.setInvoicePaid(invoice, paid)
+                            message(if (paid) "Fatura paga: ${Format.money(invoice.totalCents)} saiu do saldo" else "Pagamento da fatura desfeito")
+                        },
+                        onAdjustBalance = {
+                            repo.adjustBalance(it)
+                            message("Saldo ajustado")
+                        },
                     )
                     Tab.SETTINGS -> SettingsScreen(repo, platform, data, status, tz, ::message)
                 }
@@ -361,10 +374,42 @@ private fun MainScreen(repo: Repository, platform: Platform, data: AppData, stat
                     dismissButton = { TextButton(onClick = { repo.dismissRestore() }) { Text("Agora não") } },
                 )
             }
+            openCardId?.let { id -> data.cards[id] }?.takeIf { !it.deleted }?.let { card ->
+                CardSheet(
+                    card = card,
+                    transactions = data.activeTransactions,
+                    tz = tz,
+                    now = now,
+                    onEdit = { editingCard = CardEditRequest(card) },
+                    onAddPurchase = { editingTx = TxEditRequest(null, cardId = card.id) },
+                    onOpenTx = { editingTx = TxEditRequest(it) },
+                    onPay = { invoice, paid ->
+                        repo.setInvoicePaid(invoice, paid)
+                        message(if (paid) "Fatura paga: ${Format.money(invoice.totalCents)} saiu do saldo" else "Pagamento da fatura desfeito")
+                    },
+                    onDismiss = { openCardId = null },
+                )
+            }
+            editingCard?.let { req ->
+                CardEditor(
+                    card = req.card,
+                    onSave = {
+                        repo.saveCard(it)
+                        message("Cartão salvo")
+                    },
+                    onDelete = {
+                        repo.deleteCard(it)
+                        openCardId = null
+                        message("Cartão excluído")
+                    },
+                    onDismiss = { editingCard = null },
+                )
+            }
             editingTx?.let { req ->
                 TransactionEditor(
                     request = req,
                     tz = tz,
+                    cards = data.activeCards,
                     onSave = {
                         repo.saveTransaction(it)
                         message("Movimentação salva")

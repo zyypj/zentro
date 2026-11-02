@@ -36,6 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.zentro.shared.Bills
+import dev.zentro.shared.Cards
+import dev.zentro.shared.CreditCard
+import dev.zentro.shared.Finance
 import dev.zentro.shared.Event
 import dev.zentro.shared.Format
 import dev.zentro.shared.Schedule
@@ -60,22 +63,30 @@ fun FinanceScreen(
     onOpenBill: (Event) -> Unit,
     onTogglePaid: (Event, Long, Boolean) -> Unit,
     onNewBill: () -> Unit,
+    cards: List<CreditCard>,
+    onOpenCard: (CreditCard) -> Unit,
+    onNewCard: () -> Unit,
+    onPayInvoice: (Cards.Invoice, Boolean) -> Unit,
+    onAdjustBalance: (Long) -> Unit,
 ) {
     val today = Schedule.today(tz, now)
-    var month by remember { mutableStateOf(LocalDate(today.year, today.month, 1)) }
+    val thisMonth = LocalDate(today.year, today.month, 1)
+    var month by remember { mutableStateOf(thisMonth) }
+    var adjusting by remember { mutableStateOf(false) }
     val inMonth = remember(transactions, month) {
         transactions.filter {
             val d = Schedule.toLocal(it.date, tz).date
             d.year == month.year && d.month == month.month
         }.sortedByDescending { it.date }
     }
-    val income = inMonth.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
-    val expense = inMonth.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
-    val byCategory = remember(inMonth) {
-        inMonth.filter { it.type == TxType.EXPENSE }.groupBy { it.category }
-            .mapValues { (_, list) -> list.sumOf { it.amountCents } }
-            .entries.sortedByDescending { it.value }.take(5)
-    }
+    // O saldo continua de um mês para o outro; compras no cartão só pesam quando a fatura é paga.
+    val summaryMonth = remember(transactions, month) { Finance.month(transactions, month, tz) }
+    val income = summaryMonth.income
+    val expense = summaryMonth.expense
+    val byCategory = remember(transactions, month) { Finance.spendingByCategory(transactions, month, tz).take(5) }
+    val spent = byCategory.sumOf { it.second }
+    val history = remember(transactions, today) { Finance.history(transactions, today, tz) }
+    val cardNames = remember(cards) { cards.associate { it.id to it.name } }
     val grouped = remember(inMonth) { inMonth.groupBy { Schedule.toLocal(it.date, tz).date } }
     val bills = remember(events, month, now) { Bills.inMonth(events, month, tz, now) }
 
@@ -91,11 +102,31 @@ fun FinanceScreen(
         }
         Spacer(Modifier.height(8.dp))
         ZCard(color = MaterialTheme.colorScheme.primaryContainer) {
-            Text("Saldo do mês", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+            val onCard = MaterialTheme.colorScheme.onPrimaryContainer
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    when {
+                        month == thisMonth -> "Saldo"
+                        month < thisMonth -> "Saldo no fim de ${Format.monthName(month.month)}"
+                        else -> "Saldo previsto"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = onCard.copy(alpha = 0.8f),
+                    modifier = Modifier.weight(1f),
+                )
+                if (month == thisMonth) {
+                    androidx.compose.material3.TextButton(onClick = { adjusting = true }) { Text("Ajustar", color = onCard) }
+                }
+            }
             Text(
-                Format.money(income - expense),
+                Format.money(summaryMonth.closing),
                 style = MaterialTheme.typography.displaySmall.merge(MoneyStyle),
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = onCard,
+            )
+            Text(
+                "${Format.money(summaryMonth.opening)} do mês anterior  ·  ${Format.money(summaryMonth.result, signed = true)} neste mês",
+                style = MaterialTheme.typography.bodySmall,
+                color = onCard.copy(alpha = 0.75f),
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -106,6 +137,7 @@ fun FinanceScreen(
         Spacer(Modifier.height(12.dp))
         QuickAddField("Ex.: 45,90 almoço  ·  +1200 salário", onQuickAdd)
         BillsSection(bills, tz, now, onOpenBill, onTogglePaid, onNewBill)
+        CardsSection(cards, transactions, tz, now, onOpenCard, onNewCard, onPayInvoice)
         if (byCategory.isNotEmpty()) {
             SectionTitle("Onde foi o dinheiro")
             ZCard {
@@ -116,13 +148,14 @@ fun FinanceScreen(
                         Text(Format.money(cents), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(Modifier.height(4.dp))
-                    val fraction = if (expense > 0) cents.toFloat() / expense else 0f
+                    val fraction = if (spent > 0) cents.toFloat() / spent else 0f
                     Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
                         Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(ZColors.event(i)))
                     }
                 }
             }
         }
+        BalanceHistory(history, today) { month = it }
     } }
 
     val list = @Composable { modifier: Modifier, header: Boolean ->
@@ -137,7 +170,7 @@ fun FinanceScreen(
                 item(key = "h-$date") {
                     SectionTitle(if (date == today) "Hoje" else Format.longDate(date))
                 }
-                items(txs, key = { it.id }) { tx -> TransactionRow(tx) { onOpen(tx) } }
+                items(txs, key = { it.id }) { tx -> TransactionRow(tx, tx.cardId?.let { cardNames[it] ?: "Cartão" }) { onOpen(tx) } }
             }
         }
     }
@@ -149,6 +182,10 @@ fun FinanceScreen(
         }
     } else {
         list(Modifier.padding(horizontal = 20.dp).padding(top = 16.dp), true)
+    }
+
+    if (adjusting) {
+        AdjustBalanceDialog(remember(transactions) { Finance.balanceAt(transactions, now + 1) }, onAdjustBalance) { adjusting = false }
     }
 }
 
@@ -169,21 +206,40 @@ private fun Totals(label: String, cents: Long, color: androidx.compose.ui.graphi
 }
 
 @Composable
-fun TransactionRow(tx: Transaction, onClick: () -> Unit) {
+fun TransactionRow(tx: Transaction, cardName: String? = null, onClick: () -> Unit) {
     val income = tx.type == TxType.INCOME
-    val color = if (income) ZColors.Income else ZColors.Expense
+    val onCard = tx.cardId != null
+    val color = when {
+        onCard -> MaterialTheme.colorScheme.onSurfaceVariant
+        income -> ZColors.Income
+        else -> ZColors.Expense
+    }
     Row(
         Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surfaceContainer)
             .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(38.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-            Icon(if (income) ZIcons.TrendingUp else ZIcons.TrendingDown, null, tint = color, modifier = Modifier.size(20.dp))
+            Icon(
+                when {
+                    onCard -> ZIcons.CreditCard
+                    income -> ZIcons.TrendingUp
+                    else -> ZIcons.TrendingDown
+                },
+                null,
+                tint = color,
+                modifier = Modifier.size(20.dp),
+            )
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(tx.description, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                tx.category + if (tx.source == TxSource.MERCADO_PAGO) " · Mercado Pago" else "",
+                when {
+                    onCard && tx.installments > 1 ->
+                        "$cardName · ${tx.installments}x de ${Format.money(Cards.split(tx.amountCents, tx.installments).first())}"
+                    onCard -> "$cardName · ${tx.category}"
+                    else -> tx.category + if (tx.source == TxSource.MERCADO_PAGO) " · Mercado Pago" else ""
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
