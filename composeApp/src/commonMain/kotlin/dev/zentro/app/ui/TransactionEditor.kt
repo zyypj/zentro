@@ -6,7 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DateRange
@@ -36,7 +40,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.zentro.app.data.newId
+import dev.zentro.shared.Cards
 import dev.zentro.shared.Categories
+import dev.zentro.shared.CreditCard
 import dev.zentro.shared.Format
 import dev.zentro.shared.QuickInput
 import dev.zentro.shared.Schedule
@@ -47,13 +53,14 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 
-data class TxEditRequest(val transaction: Transaction?, val type: TxType = TxType.EXPENSE)
+data class TxEditRequest(val transaction: Transaction?, val type: TxType = TxType.EXPENSE, val cardId: String? = null)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TransactionEditor(
     request: TxEditRequest,
     tz: TimeZone,
+    cards: List<CreditCard>,
     onSave: (Transaction) -> Unit,
     onDelete: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -65,6 +72,9 @@ fun TransactionEditor(
     var category by remember { mutableStateOf(original?.category) }
     var date by remember { mutableStateOf(Schedule.toLocal(original?.date ?: Schedule.now(), tz).date) }
     var showDate by remember { mutableStateOf(false) }
+    var cardId by remember { mutableStateOf(original?.cardId ?: request.cardId) }
+    var installments by remember { mutableStateOf(original?.installments ?: 1) }
+    val card = cards.firstOrNull { it.id == cardId }
     var error by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
     val categories = if (type == TxType.INCOME) Categories.income else Categories.expense
@@ -91,13 +101,23 @@ fun TransactionEditor(
                 date = Schedule.toMillis(LocalDateTime(date, time), tz),
                 source = original?.source ?: TxSource.MANUAL,
                 externalId = original?.externalId,
+                cardId = if (type == TxType.EXPENSE) cardId else null,
+                installments = if (type == TxType.EXPENSE && cardId != null) installments else 1,
+                invoiceKey = original?.invoiceKey,
             ),
         )
         onDismiss()
     }
 
     AdaptiveSheet(onDismiss) {
-        Text(if (original == null) "Nova movimentação" else "Editar movimentação", style = MaterialTheme.typography.titleLarge)
+        Text(
+            when {
+                original != null -> "Editar movimentação"
+                request.cardId != null -> "Gasto no cartão"
+                else -> "Nova movimentação"
+            },
+            style = MaterialTheme.typography.titleLarge,
+        )
         Spacer(Modifier.height(16.dp))
 
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -142,6 +162,43 @@ fun TransactionEditor(
         ChipGroup("Categoria") {
             categories.forEach { c ->
                 FilterChip(selected = (category ?: suggested) == c, onClick = { category = c }, label = { Text(c) })
+            }
+        }
+
+        if (type == TxType.EXPENSE && original?.invoiceKey == null && (cards.isNotEmpty() || cardId != null)) {
+            ChipGroup("Pagamento") {
+                FilterChip(selected = cardId == null, onClick = { cardId = null }, label = { Text("Saldo (débito, Pix, dinheiro)") })
+                cards.forEach { c ->
+                    FilterChip(
+                        selected = cardId == c.id,
+                        onClick = { cardId = c.id },
+                        label = { Text(c.name) },
+                        leadingIcon = { Icon(ZIcons.CreditCard, null, Modifier.size(16.dp), tint = ZColors.event(c.color)) },
+                    )
+                }
+            }
+            if (cardId != null) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Parcelas", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    OutlinedButton(onClick = { installments = (installments - 1).coerceAtLeast(1) }, enabled = installments > 1, modifier = Modifier.size(40.dp), contentPadding = PaddingValues(0.dp)) { Text("−") }
+                    Text(
+                        if (installments == 1) "À vista" else "${installments}x",
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(80.dp),
+                    )
+                    OutlinedButton(onClick = { installments = (installments + 1).coerceAtMost(Cards.MAX_INSTALLMENTS) }, modifier = Modifier.size(40.dp), contentPadding = PaddingValues(0.dp)) { Text("+") }
+                }
+                val cents = Format.parseMoney(amount)
+                val hint = buildList {
+                    if (cents != null && cents > 0 && installments > 1) add("${installments}x de ${Format.money(Cards.split(cents, installments).first())}")
+                    if (card != null) {
+                        val first = Cards.invoiceFor(card, date)
+                        add("entra na fatura de ${Format.monthName(first.month)} (vence ${Format.shortDate(Cards.dueDate(card, first))})")
+                    }
+                    add("só desconta do saldo quando você pagar a fatura")
+                }.joinToString(" · ").replaceFirstChar { it.uppercase() }
+                Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             }
         }
 
