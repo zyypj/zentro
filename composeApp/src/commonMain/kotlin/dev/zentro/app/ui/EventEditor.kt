@@ -324,15 +324,7 @@ fun EventEditor(
         }
 
         Text("Cor", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ZColors.events.forEachIndexed { index, c ->
-                Box(
-                    Modifier.size(32.dp).clip(CircleShape).background(c)
-                        .border(3.dp, if (color == index) MaterialTheme.colorScheme.onSurface else Color.Transparent, CircleShape)
-                        .clickable { color = index },
-                )
-            }
-        }
+        ColorChoices(color, { color = it })
 
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(

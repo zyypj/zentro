@@ -7,6 +7,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,13 +48,29 @@ object ZColors {
     val Expense = Color(0xFFE38877)
     val Warning = Color(0xFFE2B05A)
 
-    /** Cores que o usuário pode escolher para cada compromisso. */
+    /**
+     * Paleta para compromissos, cartões e pessoas. Novas cores entram sempre no fim, para os
+     * índices já salvos continuarem com a mesma cor.
+     */
     val events = listOf(
         Color(0xFF8C7CDD), Color(0xFF7B9FD4), Color(0xFF7FB394),
         Color(0xFFE2B05A), Color(0xFFDB8BA9), Color(0xFF8E8B96),
+        Color(0xFF5FB7B4), Color(0xFFE38877), Color(0xFF6E7BE0),
+        Color(0xFFA6C46A), Color(0xFFE89A5B), Color(0xFFC77BD0),
+        Color(0xFF5EA6E6), Color(0xFFD9C35C), Color(0xFFB08968),
+        Color(0xFFF07FA0),
     )
 
-    fun event(index: Int): Color = events[index.mod(events.size)]
+    /**
+     * Cor salva num item: um número pequeno é o índice da paleta; uma cor personalizada é guardada
+     * como ARGB opaco, que como Int é sempre negativo.
+     */
+    fun event(index: Int): Color = if (isCustom(index)) Color(index) else events[index.mod(events.size)]
+
+    fun isCustom(value: Int): Boolean = value < 0
+
+    /** Guarda uma cor escolhida no seletor (sempre opaca, para cair no formato de cor própria). */
+    fun custom(color: Color): Int = color.toArgb() or (0xFF shl 24)
 }
 
 private val Dark = darkColorScheme(

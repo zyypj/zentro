@@ -339,16 +339,8 @@ fun CardEditor(card: CreditCard?, onSave: (CreditCard) -> Unit, onDelete: (Strin
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         )
-        ChipGroup("Cor") {
-            ZColors.events.indices.forEach { i ->
-                Box(
-                    Modifier.size(32.dp).clip(CircleShape).background(ZColors.event(i)).clickable { color = i },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (i == color) Icon(Icons.Rounded.Check, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                }
-            }
-        }
+        Text("Cor", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
+        ColorChoices(color, { color = it })
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
         Spacer(Modifier.height(20.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

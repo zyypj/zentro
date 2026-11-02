@@ -37,9 +37,9 @@ fun eventDetails(event: Event, start: Long, now: Long, person: Person? = null): 
     return parts.joinToString(" · ")
 }
 
-/** Cor da bolinha da linha do tempo: a da categoria, ou a cor escolhida no compromisso. */
+/** Cor da bolinha da linha do tempo: a cor escolhida no compromisso, ou a da categoria se ficou a padrão. */
 fun eventDot(event: Event): Color =
-    if (event.category.isNotEmpty()) categoryColors(event.category).dot else ZColors.event(event.color)
+    if (event.category.isNotEmpty() && event.color == 0) categoryColors(event.category).dot else ZColors.event(event.color)
 
 /** Etiqueta à direita do compromisso: categoria ou, se for de outra pessoa, o nome dela. */
 @Composable

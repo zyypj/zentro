@@ -71,6 +71,7 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
     var addingTime by remember { mutableStateOf(false) }
     var addingPerson by remember { mutableStateOf(false) }
     var removingPerson by remember { mutableStateOf<Person?>(null) }
+    var editingPerson by remember { mutableStateOf<Person?>(null) }
     var changingPassword by remember { mutableStateOf(false) }
     val updateState by platform.updates.state.collectAsState()
 
@@ -163,10 +164,10 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
                 data.activePeople.forEach { person ->
                     InputChip(
                         selected = false,
-                        onClick = { removingPerson = person },
+                        onClick = { editingPerson = person },
                         label = { Text(person.name) },
                         leadingIcon = { StatusDot(ZColors.event(person.color)) },
-                        trailingIcon = { Icon(Icons.Rounded.Close, "Remover ${person.name}", Modifier.size(16.dp)) },
+
                     )
                 }
                 AssistChip(onClick = { addingPerson = true }, label = { Text("Adicionar pessoa") }, leadingIcon = { Icon(Icons.Rounded.Add, null, Modifier.size(16.dp)) })
@@ -234,6 +235,20 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
             repo.savePerson(Person(id = newId(), name = name, color = (data.activePeople.size + 4) % ZColors.events.size))
         }
     }
+    editingPerson?.let { person ->
+        PersonDialog(
+            person = person,
+            onSave = {
+                repo.savePerson(it)
+                editingPerson = null
+            },
+            onRemove = {
+                editingPerson = null
+                removingPerson = person
+            },
+            onDismiss = { editingPerson = null },
+        )
+    }
     removingPerson?.let { person ->
         AlertDialog(
             onDismissRequest = { removingPerson = null },
@@ -255,6 +270,37 @@ fun SettingsScreen(repo: Repository, platform: Platform, data: AppData, status: 
             repo.updateSettings(SettingsPatch(reviewTimes = (data.settings.reviewTimes + value).distinct()))
         }, { addingTime = false })
     }
+}
+
+/** Editar uma pessoa: nome e cor dos compromissos dela. */
+@Composable
+private fun PersonDialog(person: Person, onSave: (Person) -> Unit, onRemove: () -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf(person.name) }
+    var color by remember { mutableStateOf(person.color) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar pessoa") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.replace("\n", "") },
+                    label = { Text("Nome") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("Cor", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
+                ColorChoices(color, { color = it })
+                TextButton(onClick = onRemove, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Remover ${person.name}", color = ZColors.Expense)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = name.isNotBlank(), onClick = { onSave(person.copy(name = name.trim(), color = color)) }) { Text("Salvar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
 }
 
 @Composable
