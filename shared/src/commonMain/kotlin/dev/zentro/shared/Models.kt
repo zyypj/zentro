@@ -32,11 +32,21 @@ data class Event(
     /** Conta a pagar: valor em centavos (null = compromisso comum). */
     val billAmountCents: Long? = null,
     val billCategory: String = "Contas",
+    /** Categoria do compromisso (ver [EventCategories]); vazio = sem categoria. */
+    val category: String = "",
     /** Inícios das ocorrências já pagas — essas não avisam mais. */
     val paid: List<Long> = emptyList(),
     val updatedAt: Long = 0,
     val deleted: Boolean = false,
 )
+
+/** Categorias dos compromissos, usadas nas etiquetas e nos filtros da agenda. */
+object EventCategories {
+    const val WORK = "Trabalho"
+    const val SCHOOL = "Faculdade"
+    const val PERSONAL = "Pessoal"
+    val all = listOf(WORK, SCHOOL, PERSONAL)
+}
 
 /** Alguém cuja agenda você acompanha junto com a sua (namorada, filho, sócio...). */
 @Serializable
