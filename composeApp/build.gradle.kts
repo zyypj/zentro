@@ -110,7 +110,7 @@ compose.desktop {
         mainClass = "dev.zentro.app.MainKt"
         // Sem limites, a JVM separa 1/64 da RAM logo ao abrir e pode crescer até 1/4, mas o Zentro usa
         // menos de 100 MB de heap. O coletor serial é o mais leve e devolve ao sistema a memória que sobra.
-        jvmArgs += listOf("-XX:+UseSerialGC", "-Xms16m", "-Xmx512m", "-XX:MinHeapFreeRatio=10", "-XX:MaxHeapFreeRatio=30", "-Xss512k")
+        jvmArgs += listOf("-XX:+UseSerialGC", "-Xms16m", "-Xmx512m", "-XX:MinHeapFreeRatio=10", "-XX:MaxHeapFreeRatio=30")
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Dmg)
             packageName = "Zentro"
