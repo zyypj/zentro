@@ -202,11 +202,14 @@ fun main(args: Array<String>) {
     exitProcess(0)
 }
 
-/** O Windows bloqueia "roubar o foco"; ficar por cima por um instante faz a janela vir para a frente. */
+/**
+ * O Windows bloqueia "roubar o foco"; ficar por cima por um instante faz a janela vir para a frente.
+ * Não chamar window.requestFocus(): isso tira o teclado da tela do Compose e passa para a moldura
+ * da janela, e aí nenhum campo recebe o que é digitado. Ao ativar, a janela devolve o teclado sozinha.
+ */
 private fun bringToFront(window: java.awt.Window) {
     window.isAlwaysOnTop = true
     window.toFront()
-    window.requestFocus()
     window.isAlwaysOnTop = false
 }
 
