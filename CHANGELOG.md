@@ -2,6 +2,11 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [2.0.2] - 2026-11-05
+
+### Corrigido
+- **PC:** na 2.0.1, depois de abrir o Zentro pela bandeja, nenhum campo aceitava texto. Agora dá para digitar normalmente de novo.
+
 ## [2.0.1] - 2026-11-02
 
 ### Melhorado
