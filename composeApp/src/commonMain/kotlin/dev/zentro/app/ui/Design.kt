@@ -473,15 +473,15 @@ fun IdeaCard(onCreate: () -> Unit, modifier: Modifier = Modifier) {
 private val weekHeader = listOf("SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM")
 
 /**
- * Calendário mensal compacto: hoje em roxo cheio, o dia escolhido com anel e um pontinho
- * nos dias que têm compromisso.
+ * Calendário mensal compacto: hoje em roxo cheio, o dia escolhido com anel e, embaixo de cada dia,
+ * pontinhos com as cores dos compromissos dele ([dots]).
  */
 @Composable
 fun MonthCalendar(
     month: LocalDate,
     today: LocalDate,
     selected: LocalDate?,
-    hasEvents: (LocalDate) -> Boolean,
+    dots: (LocalDate) -> List<Color>,
     onSelect: (LocalDate) -> Unit,
     onMonth: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -526,11 +526,16 @@ fun MonthCalendar(
                             },
                             tabular = true,
                         )
-                        if (inMonth && hasEvents(date)) {
-                            Box(
-                                Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp).size(4.dp).clip(CircleShape)
-                                    .background(if (isToday) Color.White else Color(0xFF9F90DE)),
-                            )
+                        val colors = if (inMonth) dots(date) else emptyList()
+                        if (colors.isNotEmpty()) {
+                            Row(
+                                Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                colors.forEach { c ->
+                                    Box(Modifier.size(4.dp).clip(CircleShape).background(if (isToday) Color.White else c))
+                                }
+                            }
                         }
                     }
                 }

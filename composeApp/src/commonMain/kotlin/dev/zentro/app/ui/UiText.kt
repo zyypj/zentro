@@ -41,6 +41,9 @@ fun eventDetails(event: Event, start: Long, now: Long, person: Person? = null): 
 fun eventDot(event: Event): Color =
     if (event.category.isNotEmpty() && event.color == 0) categoryColors(event.category).dot else ZColors.event(event.color)
 
+/** Cor do compromisso nas listas e no calendário: contas em amarelo, o resto na cor do compromisso. */
+fun agendaDot(event: Event): Color = if (event.billAmountCents != null) ZColors.Warning else eventDot(event)
+
 /** Etiqueta à direita do compromisso: categoria ou, se for de outra pessoa, o nome dela. */
 @Composable
 fun EventTag(event: Event, person: Person?) {

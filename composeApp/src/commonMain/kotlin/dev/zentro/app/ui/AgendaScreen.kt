@@ -87,7 +87,7 @@ fun AgendaScreen(
 
     val calendar = @Composable {
         Panel(Modifier.fillMaxWidth(), padding = 16.dp) {
-            MonthCalendar(month, today, selected, { it in marked }, ::select, { month = Finance.addMonths(month, it) }, rowHeight = 34.dp)
+            MonthCalendar(month, today, selected, { marked[it].orEmpty() }, ::select, { month = Finance.addMonths(month, it) }, rowHeight = 34.dp)
         }
     }
 
@@ -144,7 +144,7 @@ fun AgendaScreen(
                     time = if (event.allDay) "Dia todo" else Format.time(Schedule.toLocal(start, tz)),
                     title = event.title,
                     subtitle = if (isBill) "Conta · ${Format.money(event.billAmountCents ?: 0)}" else eventDetails(event, start, now).substringBefore(" · Lembrete").substringBefore(" · Sem"),
-                    dotColor = if (isBill) ZColors.Warning else eventDot(event),
+                    dotColor = agendaDot(event),
                     last = i == items.lastIndex,
                     onClick = { onOpenEvent(event) },
                     inlineTag = !LocalWide.current,

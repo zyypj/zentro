@@ -47,11 +47,17 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 
-/** Dias (entre [from] e [to]) que têm algum compromisso — os pontinhos do calendário. */
-fun eventDays(events: List<Event>, from: LocalDate, to: LocalDate, tz: TimeZone): Set<LocalDate> {
+/**
+ * Pontinhos do calendário entre [from] e [to]: as cores dos compromissos de cada dia, na ordem do
+ * horário, sem repetir cor e no máximo três.
+ */
+fun eventDays(events: List<Event>, from: LocalDate, to: LocalDate, tz: TimeZone): Map<LocalDate, List<Color>> {
     val start = Schedule.startOfDay(from, tz)
     val end = Schedule.startOfDay(to.plus(1, DateTimeUnit.DAY), tz)
-    return events.flatMap { e -> Schedule.occurrences(e, start, end, tz).map { Schedule.toLocal(it, tz).date } }.toSet()
+    return events.flatMap { e -> Schedule.occurrences(e, start, end, tz).map { it to e } }
+        .sortedBy { it.first }
+        .groupBy({ Schedule.toLocal(it.first, tz).date }, { agendaDot(it.second) })
+        .mapValues { (_, colors) -> colors.distinct().take(3) }
 }
 
 /** Tudo o que a tela Hoje mostra, calculado uma vez. */
@@ -266,7 +272,7 @@ private fun ColumnScope.Aside(
     val days = remember(data.events, month) {
         eventDays(data.activeEvents, month.minus(7, DateTimeUnit.DAY), Finance.addMonths(month, 1).plus(7, DateTimeUnit.DAY), tz)
     }
-    MonthCalendar(month, m.today, null, { it in days }, { onOpenAgenda(it) }, { month = Finance.addMonths(month, it) })
+    MonthCalendar(month, m.today, null, { days[it].orEmpty() }, { onOpenAgenda(it) }, { month = Finance.addMonths(month, it) })
 
     HLine(Modifier.padding(vertical = 28.dp), ZPalette.Line)
 
