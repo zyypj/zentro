@@ -2,6 +2,11 @@
 
 Todas as mudanças relevantes do Zentro. Segue [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [2.0.3] - 2026-11-19
+
+### Melhorado
+- **Calendário:** as bolinhas embaixo dos dias agora têm a cor de cada compromisso (ou da categoria dele), com contas em amarelo. Um dia com vários compromissos mostra até três cores.
+
 ## [2.0.2] - 2026-11-05
 
 ### Corrigido
